@@ -72,6 +72,7 @@ type App struct {
 	limiter         *cpulimit.Limiter
 	patterns        *Patterns
 	versionFlg      *bool
+	helpFlg         *bool
 }
 
 func NewApp() *App {
@@ -88,6 +89,7 @@ func (app *App) Init() {
 	app.outFile = flag.String("o", "Stdout", "output file - optional")
 	app.excludeDirsFlag = flag.String("x", "", "comma seperated list of directories to exclude during the scan")
 	app.versionFlg = flag.Bool("v", false, "prints version information")
+	app.helpFlg = flag.Bool("h", false, "prints help")
 	flag.Usage = app.usage
 	flag.Parse()
 	app.directories = flag.Args()
@@ -105,6 +107,8 @@ func (app *App) Init() {
 		MeasureInterval: time.Millisecond * 333, // measure cpu usage in an interval of 333 ms
 		Measurements:    3,                      // use the avg of the last 3 measurements
 	}
+
+	log.SetFlags(0)
 }
 
 func (app *App) usage() {
@@ -151,7 +155,11 @@ func (app *App) Start() {
 	}
 
 	if _, err = os.Stat(*app.patternsFile); os.IsNotExist(err) {
-		log.Fatalln(err.Error())
+		log.Fatalf("[!!] Provided file with patterns cannot be accessed: %s\n", err.Error())
+	}
+
+	if *app.maxCpuLoadLimit < 10 || *app.maxCpuLoadLimit > 80 {
+		log.Fatalf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80: %s\n", *app.maxCpuLoadLimit)
 	}
 
 	app.verifyDirectories()
@@ -190,8 +198,13 @@ func (app *App) verifyDirectories() {
 			app.directories[idx] = filepath.Join(cwd, directory)
 		}
 
-		if info, err := os.Stat(app.directories[idx]); err != nil || !info.IsDir() {
-			log.Fatalf("[!!] Provided directory %s cannot be accessed. Aborting.\n", app.directories[idx])
+		info, err := os.Stat(app.directories[idx])
+		if err != nil {
+			log.Fatalf("[!!] Provided directory %s cannot be accessed due to error: %s\nAborting.\n", app.directories[idx], err.Error())
+		}
+
+		if !info.IsDir() {
+			log.Fatalf("[!!] Provided path %s is not a directory. Aborting.\n", app.directories[idx])
 		}
 	}
 }
