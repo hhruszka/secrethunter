@@ -1,4 +1,4 @@
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)[![v1.0.0-alpha](https://img.shields.io/badge/release-v1.0.0--alpha-yellow)](https://github.com/hhruszka/secretshunter/releases)
 # secretshunter
 
 secretshunter is a penetration testing tool that uses regular expressions to searche a filesystem for secrets. It can be used to search also container images for secrets by pointing to a containr's root filesystem.
