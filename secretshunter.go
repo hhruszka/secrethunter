@@ -85,7 +85,7 @@ func NewApp() *App {
 func (app *App) Init() {
 	app.patternsFile = flag.String("p", "", "file with patterns - mandatory. Patterns can be found on https://github.com/mazen160/secrets-patterns-db")
 	app.maxNumberOfCpu = flag.Int("c", runtime.NumCPU(), "maximum number of vCPUs to be used by a program - optional")
-	app.maxCpuLoadLimit = flag.Float64("t", 80, "throttling, range from 10 to 80 denoting maximum CPU usage (%) that the\nsystem cannot exceed during execution of the program - optional")
+	app.maxCpuLoadLimit = flag.Float64("t", 80, "throttling:q range from 10 to 80 denoting maximum CPU usage (%) that the\nsystem cannot exceed during execution of the program - optional")
 	app.outFile = flag.String("o", "Stdout", "output file - optional")
 	app.excludeDirsFlag = flag.String("x", "", "comma seperated list of directories to exclude during the scan")
 	app.versionFlg = flag.Bool("v", false, "prints version information")
