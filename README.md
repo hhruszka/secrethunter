@@ -37,7 +37,7 @@ secretshunter includes third-party packages that are subject to their respective
 - github.com/gabriel-vasile/mimetype is licensed under the MIT License. See https://github.com/gabriel-vasile/mimetype/blob/master/LICENSE for details.
 - gobyexample.com/rate-limiting is licensed under the CC BY 3.0.See https://github.com/mmcgrana/gobyexample#license.
 - github.com/dlclark/regexp2 is licensed under the Apache License, Version 2.0. See https://github.com/dlclark/regexp2/blob/master/LICENSE for details.
-Please review these licenses before using this code or these packages in your own projects.
+<br/>Please review these licenses before using this code or these packages in your own projects.
 
 ## Binaries
 Compiled secretshunter binaries for linux and Windows can be found in the releases [link](https://github.com/hhruszka/secretshunter/releases).
