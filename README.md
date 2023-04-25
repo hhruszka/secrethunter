@@ -1,7 +1,7 @@
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)[![v1.0.0-alpha](https://img.shields.io/badge/release-v1.0.0--alpha-yellow)](https://github.com/hhruszka/secretshunter/releases)
 # secretshunter
 
-secretshunter is a penetration testing tool that uses regular expressions to searches a filesystem for secrets. It can be used to search also container images for secrets by pointing to a containr's root filesystem.
+secretshunter is a penetration testing tool that uses regular expressions to searche a filesystem for secrets. It can be used to search also container images for secrets by pointing to a containr's root filesystem.
 It uses regular expressions provided in yaml files to find secrets (passwords, hashes, API keys etc.) in found plaintext files. 
 It is compatible with yaml files provided by https://github.com/mazen160/secrets-patterns-db project.
 
@@ -38,3 +38,6 @@ secretshunter includes third-party packages that are subject to their respective
 - gobyexample.com/rate-limiting is licensed under the CC BY 3.0.See https://github.com/mmcgrana/gobyexample#license.
 - github.com/dlclark/regexp2 is licensed under the Apache License, Version 2.0. See https://github.com/dlclark/regexp2/blob/master/LICENSE for details.
 Please review these licenses before using this code or these packages in your own projects.
+
+## Binaries
+Compiled secretshunter binaries for linux and Windows can be found in the releases [link](https://github.com/hhruszka/secretshunter/releases).
