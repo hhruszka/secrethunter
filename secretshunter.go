@@ -72,6 +72,7 @@ type App struct {
 	limiter         *cpulimit.Limiter
 	patterns        *Patterns
 	versionFlg      *bool
+	helpFlg         *bool
 }
 
 func NewApp() *App {
@@ -84,26 +85,17 @@ func NewApp() *App {
 func (app *App) Init() {
 	app.patternsFile = flag.String("p", "", "file with patterns - mandatory. Patterns can be found on https://github.com/mazen160/secrets-patterns-db")
 	app.maxNumberOfCpu = flag.Int("c", runtime.NumCPU(), "maximum number of vCPUs to be used by a program - optional")
-	app.maxCpuLoadLimit = flag.Float64("l", 80, "range from 10 to 80 denoting maximum CPU usage (%) that the\nsystem cannot exceed during execution of the program - optional")
+	app.maxCpuLoadLimit = flag.Float64("t", 80, "throttling, range from 10 to 80 denoting maximum CPU usage (%) that the\nsystem cannot exceed during execution of the program - optional")
 	app.outFile = flag.String("o", "Stdout", "output file - optional")
 	app.excludeDirsFlag = flag.String("x", "", "comma seperated list of directories to exclude during the scan")
 	app.versionFlg = flag.Bool("v", false, "prints version information")
+	app.helpFlg = flag.Bool("h", false, "prints help")
 	flag.Usage = app.usage
 	flag.Parse()
 	app.directories = flag.Args()
 
 	if len(*app.excludeDirsFlag) > 0 {
 		app.excludedDirs = strings.Split(*app.excludeDirsFlag, ",")
-	}
-
-	// limit number of vCPUs used by the program
-	runtime.GOMAXPROCS(*app.maxNumberOfCpu)
-
-	// configure limitter which limits CPU consumption by the program
-	app.limiter = &cpulimit.Limiter{
-		MaxCPUUsage:     *app.maxCpuLoadLimit,   // throttle CPU usage to 50%
-		MeasureInterval: time.Millisecond * 333, // measure cpu usage in an interval of 333 ms
-		Measurements:    3,                      // use the avg of the last 3 measurements
 	}
 }
 
@@ -141,6 +133,8 @@ func (app *App) version() {
 func (app *App) Start() {
 	var err error
 
+	log.SetFlags(0)
+
 	if *app.versionFlg {
 		app.version()
 		os.Exit(0)
@@ -151,7 +145,15 @@ func (app *App) Start() {
 	}
 
 	if _, err = os.Stat(*app.patternsFile); os.IsNotExist(err) {
-		log.Fatalln(err.Error())
+		log.Fatalf("[!!] Provided file with patterns cannot be accessed: %s\n", err.Error())
+	}
+
+	if *app.maxCpuLoadLimit < 10 || *app.maxCpuLoadLimit > 80 {
+		log.Fatalf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80: %s\n", *app.maxCpuLoadLimit)
+	}
+
+	if *app.maxNumberOfCpu < 1 || *app.maxNumberOfCpu > runtime.NumCPU() {
+		log.Fatalf("[!!] Provided number of vCPUs %d is not in the range from 1 to %d.\n", *app.maxNumberOfCpu, runtime.NumCPU())
 	}
 
 	app.verifyDirectories()
@@ -170,6 +172,17 @@ func (app *App) Start() {
 		}
 		fmt.Printf("[*] Scan results will be saved to %s file\n", *app.outFile)
 	}
+
+	// limit number of vCPUs used by the program
+	runtime.GOMAXPROCS(*app.maxNumberOfCpu)
+
+	// configure limitter which limits CPU consumption by the program
+	app.limiter = &cpulimit.Limiter{
+		MaxCPUUsage:     *app.maxCpuLoadLimit,   // throttle CPU usage to 50%
+		MeasureInterval: time.Millisecond * 333, // measure cpu usage in an interval of 333 ms
+		Measurements:    3,                      // use the avg of the last 3 measurements
+	}
+
 	app.limiter.Start()
 }
 
@@ -190,8 +203,13 @@ func (app *App) verifyDirectories() {
 			app.directories[idx] = filepath.Join(cwd, directory)
 		}
 
-		if info, err := os.Stat(app.directories[idx]); err != nil || !info.IsDir() {
-			log.Fatalf("[!!] Provided directory %s cannot be accessed. Aborting.\n", app.directories[idx])
+		info, err := os.Stat(app.directories[idx])
+		if err != nil {
+			log.Fatalf("[!!] Provided directory %s cannot be accessed due to error: %s\nAborting.\n", app.directories[idx], err.Error())
+		}
+
+		if !info.IsDir() {
+			log.Fatalf("[!!] Provided path %s is not a directory. Aborting.\n", app.directories[idx])
 		}
 	}
 }
