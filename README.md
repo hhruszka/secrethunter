@@ -25,6 +25,17 @@ Usage: secretshunter.exe [OPTIONS] "space seperated directories to scan"
   -x string
         comma seperated list of directories to exclude during the scan
 ```
+## Examples:
+```
+./secretshunter -p ./high-confidence.yaml -c 4 -t 65 -o ~/seceret-scan-report -x /proc,/dev /home /opt 
+```
+The above will:
+- use ./high-confidence.yaml file with secrets regresion expressions
+- use only 4 vCPUs
+- throttle itself if CPU usage is above 65%
+- save found secrets in ~/seceret-scan-report
+- exclude directories /proc and /dev from scanning
+- scan directories /home and /opt
 ## Licensing
 secretshunter is licensed under the GNU Affero General Public License v3.0 (AGPLv3). You 
 are free to use, distribute, and modify this software under the terms of the AGPLv3. If you 
