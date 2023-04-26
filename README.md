@@ -41,4 +41,4 @@ secretshunter includes third-party packages that are subject to their respective
 Please review these licenses before using this code or these packages in your own projects.
 
 ## Binaries
-Compiled secretshunter binaries for Linux and Windows can be found in the releases [link](https://github.com/hhruszka/secretshunter/releases) or `executable` directory.
+Compiled secretshunter binaries for Linux and Windows can be found in the releases [link](https://github.com/hhruszka/secretshunter/releases) or [executables](https://github.com/hhruszka/secretshunter/tree/main/executables) directory.
