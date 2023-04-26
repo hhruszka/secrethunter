@@ -36,6 +36,10 @@ The above will:
 - save found secrets in ~/seceret-scan-report
 - exclude directories /proc and /dev from scanning
 - scan directories /home and /opt
+
+## Binaries
+Compiled secretshunter binaries for Linux and Windows can be found under the releases [link](https://github.com/hhruszka/secretshunter/releases) or in [executables](https://github.com/hhruszka/secretshunter/tree/main/executables) folder.
+
 ## Licensing
 secretshunter is licensed under the GNU Affero General Public License v3.0 (AGPLv3). You 
 are free to use, distribute, and modify this software under the terms of the AGPLv3. If you 
@@ -50,6 +54,3 @@ secretshunter includes third-party packages that are subject to their respective
 - github.com/dlclark/regexp2 is licensed under the Apache License, Version 2.0. See https://github.com/dlclark/regexp2/blob/master/LICENSE for details.
 
 Please review these licenses before using this code or these packages in your own projects.
-
-## Binaries
-Compiled secretshunter binaries for Linux and Windows can be found in the releases [link](https://github.com/hhruszka/secretshunter/releases) or [executables](https://github.com/hhruszka/secretshunter/tree/main/executables) directory.
