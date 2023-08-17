@@ -61,20 +61,20 @@ type ScanResults struct {
 }
 
 type App struct {
-	fdout           *os.File
-	patternsFile    *string
-	maxNumberOfCpu  *int
-	maxCpuLoadLimit *float64
-	outFile         *string
-	excludeDirsFlag *string
-	paths           []string
-	directories     []string // directories to scan
-	excludedDirs    []string // directories and patterns to exclude
-	files           []string // files to scan
-	limiter         *cpulimit.Limiter
-	patterns        *Patterns
-	versionFlg      *bool
-	helpFlg         *bool
+	fdout            *os.File
+	patternsFile     *string
+	maxNumberOfCpu   *int
+	maxCpuLoadLimit  *float64
+	outFile          *string
+	excludePathsFlag *string
+	paths            []string
+	directories      []string // directories to scan
+	excludedPaths    []string // directories and patterns to exclude
+	files            []string // files to scan
+	limiter          *cpulimit.Limiter
+	patterns         *Patterns
+	versionFlg       *bool
+	helpFlg          *bool
 }
 
 func NewApp() *App {
@@ -89,7 +89,7 @@ func (app *App) Init() {
 	app.maxNumberOfCpu = flag.Int("c", runtime.NumCPU(), "maximum number of vCPUs to be used by a program - optional")
 	app.maxCpuLoadLimit = flag.Float64("t", 80, "throttling:q range from 10 to 80 denoting maximum CPU usage (%) that the\nsystem cannot exceed during execution of the program - optional")
 	app.outFile = flag.String("o", "Stdout", "output file - optional")
-	app.excludeDirsFlag = flag.String("x", "", "comma seperated list of directories to exclude during the scan")
+	app.excludePathsFlag = flag.String("x", "", "comma seperated list of directories to exclude during the scan")
 	app.versionFlg = flag.Bool("v", false, "prints version information")
 	app.helpFlg = flag.Bool("h", false, "prints help")
 	flag.Usage = app.usage
@@ -97,10 +97,6 @@ func (app *App) Init() {
 	app.paths = flag.Args()
 	app.directories = []string{}
 	app.files = []string{}
-
-	if len(*app.excludeDirsFlag) > 0 {
-		app.excludedDirs = strings.Split(*app.excludeDirsFlag, ",")
-	}
 }
 
 func (app *App) usage() {
@@ -161,9 +157,14 @@ func (app *App) Start() {
 		log.Fatalf("[!!] Provided number of vCPUs %d is not in the range from 1 to %d.\n", *app.maxNumberOfCpu, runtime.NumCPU())
 	}
 
-	//app.verifyDirectories()
 	app.verifyPaths()
-	//app.verifyExcludedDirectories()
+	app.verifyExcludedPaths()
+
+	//if len(app.excludedPaths) > 0 {
+	//	for cnt, pat := range app.excludedPaths {
+	//		log.Printf("[%d] %s", cnt, pat)
+	//	}
+	//}
 
 	if app.patterns, err = NewPatterns(*app.patternsFile); err != nil {
 		log.Fatalln(err.Error())
@@ -228,10 +229,9 @@ func (app *App) verifyPaths() {
 			if err != nil {
 				log.Fatalln(err.Error())
 			}
-			path = filepath.Join(cwd, path)
+			app.paths[idx] = filepath.Join(cwd, path)
+			path = app.paths[idx]
 		}
-
-		app.paths[idx] = path
 
 		info, err := os.Stat(path)
 		if err != nil {
@@ -248,22 +248,39 @@ func (app *App) verifyPaths() {
 	}
 }
 
-func (app *App) verifyExcludedDirectories() {
-	for idx, dir := range app.excludedDirs {
-		if filepath.IsAbs(dir) {
-			app.excludedDirs[idx] = filepath.Join(dir)
-		} else {
-			cwd, err := os.Getwd()
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
-			app.excludedDirs[idx] = filepath.Join(cwd, dir)
-		}
+func (app *App) verifyExcludedPaths() {
+	var patterns []string
 
-		if info, err := os.Stat(app.excludedDirs[idx]); err != nil || !info.IsDir() {
-			log.Fatalf("[!!] Provided directory %s does not exist. Aborting.\n", app.directories[idx])
+	if len(*app.excludePathsFlag) > 0 {
+		patterns = strings.Split(*app.excludePathsFlag, ",")
+	}
+
+	if len(patterns) == 1 {
+		// there is only one pattern provided by a user, check whether this is a file
+
+		filePath := patterns[0]
+		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+			// user provided a file with patterns for excluded paths
+
+			readFile, err := os.Open(filePath)
+
+			if err != nil {
+				log.Fatalf("[!!] Cannot open file %s with path exclusion patterns due to error: %s. Aborting.\n", filePath, err)
+			}
+			defer readFile.Close()
+
+			fileScanner := bufio.NewScanner(readFile)
+			fileScanner.Split(bufio.ScanLines)
+
+			for fileScanner.Scan() {
+				app.excludedPaths = append(app.excludedPaths, fileScanner.Text())
+			}
+
+			return
 		}
 	}
+
+	app.excludedPaths = patterns
 }
 
 func (app *App) scanWithRegex(text string) (*Pattern, string) {
@@ -375,11 +392,14 @@ func (app *App) ScanFiles(files []string) ([]*ScanResults, int) {
 
 func main() {
 	var files []string
+
 	app := NewApp()
 	app.Start()
 	defer app.Stop()
 
+	files = make([]string, len(app.files))
 	copy(files, app.files)
+
 	// start processing files
 	for _, directory := range app.directories {
 		fmt.Printf("[*] Processing directory %s\n", directory)
@@ -388,7 +408,7 @@ func main() {
 		fndfiles := func() []string {
 			message := fmt.Sprintf("\n[+] Finished scanning %s for files in", directory)
 			defer timer(message)()
-			return getFileList(directory, app.excludedDirs)
+			return getFileList(directory, app.excludedPaths)
 		}()
 
 		if len(fndfiles) >= 0 {
@@ -399,7 +419,6 @@ func main() {
 		}
 	}
 
-	os.Exit(0)
 	// look for secrets in found files
 	scans, secretsFound := app.ScanFiles(files)
 
