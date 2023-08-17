@@ -4,7 +4,9 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/schollz/progressbar/v3"
 	"io/fs"
+	"log"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sync"
 )
@@ -15,7 +17,6 @@ func worker(id int, wg *sync.WaitGroup, jobs chan string, results chan string) {
 
 	for fp := range jobs {
 		fm, err := mimetype.DetectFile(fp)
-		isBinary := true
 
 		if fm.Is("application/octet-stream") {
 			continue
@@ -24,12 +25,8 @@ func worker(id int, wg *sync.WaitGroup, jobs chan string, results chan string) {
 		if err == nil {
 			for mtype := fm; mtype != nil; mtype = mtype.Parent() {
 				if mtype.Is("text/plain") {
-					isBinary = false
+					results <- fp
 				}
-			}
-
-			if isBinary == false {
-				results <- fp
 			}
 		}
 	}
@@ -46,6 +43,19 @@ func isExcluded(path string, dirs []string) (excluded bool) {
 	return
 }
 
+func isExcludedRegEx(path string, patterns []string) (excluded bool) {
+	excluded = false
+	for _, pattern := range patterns {
+		if reg, err := regexp.Compile(pattern); err != nil {
+			log.Println(err.Error())
+		} else if match := reg.FindStringSubmatch(path); len(match) > 0 {
+			log.Printf("[-] Excluded file: %s by pattern: %s\n", path, pattern)
+			excluded = true
+		}
+	}
+	return excluded
+}
+
 func getFileList(directory string, excludedDirs []string) (files []string) {
 	var wg sync.WaitGroup
 	var results chan string = make(chan string, 1000)
@@ -53,10 +63,7 @@ func getFileList(directory string, excludedDirs []string) (files []string) {
 
 	files = []string{}
 	bar := progressbar.Default(-1, "Finding plaintext files")
-	//bar := progressbar.NewOptions(-1, progressbar.OptionSpinnerType(1), progressbar.OptionSetDescription("Finding plaintext files"), progressbar.OptionOnCompletion(func() {
-	//	fmt.Printf("\n")
-	//}))
-	// start workers pool
+
 	for cnt := 0; cnt < cap(jobs); cnt++ {
 		wg.Add(1)
 		go worker(cnt, &wg, jobs, results)
@@ -86,7 +93,7 @@ func getFileList(directory string, excludedDirs []string) (files []string) {
 				return nil
 			}
 
-			if d.IsDir() && isExcluded(path, excludedDirs) {
+			if d.IsDir() && isExcludedRegEx(path, excludedDirs) {
 				return filepath.SkipDir
 			}
 

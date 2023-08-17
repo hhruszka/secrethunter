@@ -67,8 +67,10 @@ type App struct {
 	maxCpuLoadLimit *float64
 	outFile         *string
 	excludeDirsFlag *string
-	directories     []string
-	excludedDirs    []string
+	paths           []string
+	directories     []string // directories to scan
+	excludedDirs    []string // directories and patterns to exclude
+	files           []string // files to scan
 	limiter         *cpulimit.Limiter
 	patterns        *Patterns
 	versionFlg      *bool
@@ -92,7 +94,9 @@ func (app *App) Init() {
 	app.helpFlg = flag.Bool("h", false, "prints help")
 	flag.Usage = app.usage
 	flag.Parse()
-	app.directories = flag.Args()
+	app.paths = flag.Args()
+	app.directories = []string{}
+	app.files = []string{}
 
 	if len(*app.excludeDirsFlag) > 0 {
 		app.excludedDirs = strings.Split(*app.excludeDirsFlag, ",")
@@ -139,8 +143,9 @@ func (app *App) Start() {
 		app.version()
 		os.Exit(0)
 	}
+
 	// check if a minimum set of parameters was passed to the program
-	if len(*app.patternsFile) == 0 || len(app.directories) == 0 {
+	if len(*app.patternsFile) == 0 || len(app.paths) == 0 {
 		app.usage()
 	}
 
@@ -149,15 +154,16 @@ func (app *App) Start() {
 	}
 
 	if *app.maxCpuLoadLimit < 10 || *app.maxCpuLoadLimit > 80 {
-		log.Fatalf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80: %s\n", *app.maxCpuLoadLimit)
+		log.Fatalf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80\n", *app.maxCpuLoadLimit)
 	}
 
 	if *app.maxNumberOfCpu < 1 || *app.maxNumberOfCpu > runtime.NumCPU() {
 		log.Fatalf("[!!] Provided number of vCPUs %d is not in the range from 1 to %d.\n", *app.maxNumberOfCpu, runtime.NumCPU())
 	}
 
-	app.verifyDirectories()
-	app.verifyExcludedDirectories()
+	//app.verifyDirectories()
+	app.verifyPaths()
+	//app.verifyExcludedDirectories()
 
 	if app.patterns, err = NewPatterns(*app.patternsFile); err != nil {
 		log.Fatalln(err.Error())
@@ -178,7 +184,7 @@ func (app *App) Start() {
 
 	// configure limitter which limits CPU consumption by the program
 	app.limiter = &cpulimit.Limiter{
-		MaxCPUUsage:     *app.maxCpuLoadLimit,   // throttle CPU usage to 50%
+		MaxCPUUsage:     *app.maxCpuLoadLimit,
 		MeasureInterval: time.Millisecond * 333, // measure cpu usage in an interval of 333 ms
 		Measurements:    3,                      // use the avg of the last 3 measurements
 	}
@@ -192,6 +198,7 @@ func (app *App) Stop() {
 }
 
 func (app *App) verifyDirectories() {
+	app.directories = append(app.directories, app.paths...)
 	for idx, directory := range app.directories {
 		if filepath.IsAbs(directory) {
 			app.directories[idx] = filepath.Join(directory)
@@ -214,6 +221,33 @@ func (app *App) verifyDirectories() {
 	}
 }
 
+func (app *App) verifyPaths() {
+	for idx, path := range app.paths {
+		if !filepath.IsAbs(path) {
+			cwd, err := os.Getwd()
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
+			path = filepath.Join(cwd, path)
+		}
+
+		app.paths[idx] = path
+
+		info, err := os.Stat(path)
+		if err != nil {
+			log.Fatalf("[!!] Provided path %s cannot be accessed due to error: %s\nAborting.\n", path, err.Error())
+		}
+
+		if info.IsDir() {
+			app.directories = append(app.directories, path)
+		} else if info.Mode().IsRegular() {
+			app.files = append(app.files, path)
+		} else {
+			log.Fatalf("[!!] Provided path %s is not a directory nor a file. Aborting.\n", app.directories[idx])
+		}
+	}
+}
+
 func (app *App) verifyExcludedDirectories() {
 	for idx, dir := range app.excludedDirs {
 		if filepath.IsAbs(dir) {
@@ -232,16 +266,16 @@ func (app *App) verifyExcludedDirectories() {
 	}
 }
 
-func (app *App) scanWithRegex(text string) (*Pattern, *string) {
+func (app *App) scanWithRegex(text string) (*Pattern, string) {
 	for _, pattern := range app.patterns.Get() {
 		if reg, err := regexp.Compile(pattern.Regex); err != nil {
 			log.Println(err.Error())
 		} else if match := reg.FindStringSubmatch(text); len(match) > 0 {
-			return &pattern, &match[0]
+			return &pattern, strings.Clone(match[0])
 		}
 		app.limiter.Wait()
 	}
-	return nil, nil
+	return nil, ""
 }
 
 func (app *App) scanFile(file string) *ScanResults {
@@ -264,7 +298,7 @@ func (app *App) scanFile(file string) *ScanResults {
 
 	for scanner.Scan() {
 		if pattern, match := app.scanWithRegex(scanner.Text()); pattern != nil {
-			foundSecrets[line] = Secret{SecretType: pattern.Name, SecretValue: *match, LineNumber: line}
+			foundSecrets[line] = Secret{SecretType: pattern.Name, SecretValue: match, LineNumber: line}
 		}
 		line++
 	}
@@ -276,7 +310,7 @@ func (app *App) scanFile(file string) *ScanResults {
 	}
 }
 
-func (app *App) worker(id int, wg *sync.WaitGroup, jobs chan string, scans chan *ScanResults, bar *progressbar.ProgressBar) {
+func (app *App) worker(wg *sync.WaitGroup, jobs chan string, scans chan *ScanResults, bar *progressbar.ProgressBar) {
 	defer wg.Done()
 
 	for file := range jobs {
@@ -300,20 +334,17 @@ func (app *App) ScanFiles(files []string) ([]*ScanResults, int) {
 
 	// start progress bar
 	bar := progressbar.Default(int64(len(files)), "Scanning progress")
-	//bar := progressbar.NewOptions(len(files), progressbar.OptionSetDescription("Scanning progress"), progressbar.OptionOnCompletion(func() {
-	//	fmt.Printf("\n")
-	//}))
-	// start workers pool
+
 	for cnt := 0; cnt < cap(jobs); cnt++ {
 		wg.Add(1)
-		go app.worker(cnt, &wg, jobs, scans, bar)
+		go app.worker(&wg, jobs, scans, bar)
 	}
 
 	var rg sync.WaitGroup // results WaitGroup
 	rg.Add(1)
 
 	// start goroutine which collects secrets found by workers
-	secrets := []*ScanResults{}
+	var secrets = []*ScanResults{}
 	go func(secrets *[]*ScanResults, secretsFound *int) {
 		defer rg.Done()
 
@@ -343,39 +374,37 @@ func (app *App) ScanFiles(files []string) ([]*ScanResults, int) {
 }
 
 func main() {
-
+	var files []string
 	app := NewApp()
 	app.Start()
 	defer app.Stop()
 
+	copy(files, app.files)
 	// start processing files
 	for _, directory := range app.directories {
 		fmt.Printf("[*] Processing directory %s\n", directory)
 
 		// find plain text files a directory
-		files := func() []string {
+		fndfiles := func() []string {
 			message := fmt.Sprintf("\n[+] Finished scanning %s for files in", directory)
 			defer timer(message)()
 			return getFileList(directory, app.excludedDirs)
 		}()
 
-		fmt.Printf("[+] Found %d files in %s\n", len(files), directory)
-
-		if len(files) == 0 {
-			fmt.Printf("[-] Nothing to scan in %s\n", directory)
-			continue
-		}
-
-		// look for secrets in found files
-		scans, secretsFound := app.ScanFiles(files)
-
-		if len(scans) > 0 {
-			fmt.Printf("[+] Found %d secrets in %d files in %s directory\n", secretsFound, len(scans), directory)
+		if len(fndfiles) >= 0 {
+			fmt.Printf("[+] Found %d files in %s\n", len(fndfiles), directory)
+			files = append(files, fndfiles...)
 		} else {
-			fmt.Printf("[-] No secrets found in %s directory\n", directory)
-			continue
+			fmt.Printf("[-] Nothing to scan in %s\n", directory)
 		}
+	}
 
+	os.Exit(0)
+	// look for secrets in found files
+	scans, secretsFound := app.ScanFiles(files)
+
+	if len(scans) > 0 {
+		fmt.Printf("[+] Found %d secrets in %d files\n", secretsFound, len(scans))
 		// deliver scan results
 		for _, scan := range scans {
 			fmt.Fprintf(app.fdout, "[+] Found %d secret(s) in %s file\n", len(scan.secrets), scan.file)
@@ -383,5 +412,7 @@ func main() {
 				fmt.Fprintf(app.fdout, "\tLine: %d %s: %q\n", secret.LineNumber, secret.SecretType, secret.SecretValue)
 			}
 		}
+	} else {
+		fmt.Printf("[-] No secrets found\n")
 	}
 }
