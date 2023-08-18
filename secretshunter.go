@@ -64,7 +64,7 @@ type App struct {
 	fdout            *os.File
 	patternsFile     *string
 	maxNumberOfCpu   *int
-	maxCpuLoadLimit  *float64
+	maxCpuLoadLimit  *int
 	outFile          *string
 	excludePathsFlag *string
 	paths            []string
@@ -87,7 +87,7 @@ func NewApp() *App {
 func (app *App) Init() {
 	app.patternsFile = flag.String("p", "", "file with patterns - mandatory. Patterns can be found on https://github.com/mazen160/secrets-patterns-db")
 	app.maxNumberOfCpu = flag.Int("c", runtime.NumCPU(), "maximum number of vCPUs to be used by a program - optional")
-	app.maxCpuLoadLimit = flag.Float64("t", 80, "throttling:q range from 10 to 80 denoting maximum CPU usage (%) that the\nsystem cannot exceed during execution of the program - optional")
+	app.maxCpuLoadLimit = flag.Int("t", 80, "throttling value (from 10 to 80) - sets maximum CPU usage that the\nsystem cannot exceed during execution of the program - optional")
 	app.outFile = flag.String("o", "Stdout", "output file - optional")
 	app.excludePathsFlag = flag.String("x", "", "comma seperated list of directories to exclude during the scan")
 	app.versionFlg = flag.Bool("v", false, "prints version information")
@@ -185,7 +185,7 @@ func (app *App) Start() {
 
 	// configure limitter which limits CPU consumption by the program
 	app.limiter = &cpulimit.Limiter{
-		MaxCPUUsage:     *app.maxCpuLoadLimit,
+		MaxCPUUsage:     float64(*app.maxCpuLoadLimit),
 		MeasureInterval: time.Millisecond * 333, // measure cpu usage in an interval of 333 ms
 		Measurements:    3,                      // use the avg of the last 3 measurements
 	}
@@ -392,6 +392,7 @@ func (app *App) ScanFiles(files []string) ([]*ScanResults, int) {
 
 func main() {
 	var files []string
+	var excludedPaths []string
 
 	app := NewApp()
 	app.Start()
@@ -405,7 +406,7 @@ func main() {
 		fmt.Printf("[*] Processing directory %s\n", directory)
 
 		// find plain text files a directory
-		fndfiles := func() []string {
+		fndfiles, expaths := func() ([]string, []string) {
 			message := fmt.Sprintf("\n[+] Finished scanning %s for files in", directory)
 			defer timer(message)()
 			return getFileList(directory, app.excludedPaths)
@@ -416,6 +417,11 @@ func main() {
 			files = append(files, fndfiles...)
 		} else {
 			fmt.Printf("[-] Nothing to scan in %s\n", directory)
+		}
+
+		if len(expaths) > 0 {
+			fmt.Printf("[+] %d paths were excluded based on provided patterns\n", len(expaths))
+			excludedPaths = expaths
 		}
 	}
 
@@ -433,5 +439,12 @@ func main() {
 		}
 	} else {
 		fmt.Printf("[-] No secrets found\n")
+	}
+
+	if len(excludedPaths) > 0 {
+		fmt.Fprintf(app.fdout, "[+] Following paths were excluded from a scan based on the provided patterns\n")
+		for _, exPath := range excludedPaths {
+			fmt.Fprintf(app.fdout, "\t%s\n", exPath)
+		}
 	}
 }
