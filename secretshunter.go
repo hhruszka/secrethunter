@@ -429,7 +429,11 @@ func main() {
 	scans, secretsFound := app.ScanFiles(files)
 
 	if len(scans) > 0 {
-		fmt.Printf("[+] Found %d secrets in %d files\n", secretsFound, len(scans))
+		if *app.outFile != "Stdout" {
+			fmt.Printf("[+] Found %d secrets in %d files\n", secretsFound, len(scans))
+		}
+
+		fmt.Fprintf(app.fdout, "[+] Found %d secrets in %d files\n", secretsFound, len(scans))
 		// deliver scan results
 		for _, scan := range scans {
 			fmt.Fprintf(app.fdout, "[+] Found %d secret(s) in %s file\n", len(scan.secrets), scan.file)
@@ -437,12 +441,21 @@ func main() {
 				fmt.Fprintf(app.fdout, "\tLine: %d %s: %q\n", secret.LineNumber, secret.SecretType, secret.SecretValue)
 			}
 		}
+
+		fmt.Fprintf(app.fdout, "\n\n[*] Following files have to be reviewed to determine impact of found secrets\n")
+		// list files with found secrets
+		for _, scan := range scans {
+			fmt.Fprintf(app.fdout, "\t%s\n", scan.file)
+		}
 	} else {
-		fmt.Printf("[-] No secrets found\n")
+		if *app.outFile != "Stdout" {
+			fmt.Printf("[-] No secrets found\n")
+		}
+		fmt.Fprintf(app.fdout, "[-] No secrets found\n")
 	}
 
 	if len(excludedPaths) > 0 {
-		fmt.Fprintf(app.fdout, "[+] Following paths were excluded from a scan based on the provided patterns\n")
+		fmt.Fprintf(app.fdout, "\n\n[*] Following paths were excluded from a scan based on the provided patterns\n")
 		for _, exPath := range excludedPaths {
 			fmt.Fprintf(app.fdout, "\t%s\n", exPath)
 		}
