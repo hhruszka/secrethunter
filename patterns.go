@@ -32,6 +32,16 @@ func NewPatterns(fileWithPatterns string) (*Patterns, error) {
 	return &p, nil
 }
 
+func DefaultPatterns() (*Patterns, error) {
+	p := Patterns{file: "", patterns: nil}
+	err := p.read(defaultPatterns)
+
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 func (p *Patterns) load() error {
 	fd, err := os.Open(p.file)
 	if err != nil {
@@ -49,6 +59,20 @@ func (p *Patterns) load() error {
 	for _, dataElement := range data.Patterns {
 		p.patterns = append(p.patterns, dataElement.Pattern)
 	}
+
+	return nil
+}
+
+func (p *Patterns) read(yamlPatterns string) error {
+	var data []Pattern
+
+	err := yaml.Unmarshal([]byte(defaultPatterns), &data)
+	if err != nil {
+		return err
+	}
+
+	p.file = ""
+	p.patterns = data
 
 	return nil
 }

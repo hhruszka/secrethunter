@@ -85,13 +85,13 @@ func NewApp() *App {
 }
 
 func (app *App) Init() {
-	app.patternsFile = flag.String("p", "", "file with patterns - mandatory. Patterns can be found on https://github.com/mazen160/secrets-patterns-db")
-	app.maxNumberOfCpu = flag.Int("c", runtime.NumCPU(), "maximum number of vCPUs to be used by a program - optional")
-	app.maxCpuLoadLimit = flag.Int("t", 80, "throttling value (from 10 to 80) - sets maximum CPU usage that the\nsystem cannot exceed during execution of the program - optional")
-	app.outFile = flag.String("o", "Stdout", "output file - optional")
-	app.excludePathsFlag = flag.String("x", "", "comma seperated list of directories to exclude during the scan")
-	app.versionFlg = flag.Bool("v", false, "prints version information")
-	app.helpFlg = flag.Bool("h", false, "prints help")
+	app.patternsFile = flag.String("p", "", "`file` with regular expression patterns of secrets that the tool is\nsupposed to scan found files for - mandatory.\nPatterns can be found on https://github.com/mazen160/secrets-patterns-db")
+	app.maxNumberOfCpu = flag.Int("c", runtime.NumCPU(), "maximum `number of vCPUs` to be used by the tool - optional")
+	app.maxCpuLoadLimit = flag.Int("t", 80, "`throttling value` (from 10 to 80), which sets maximum CPU usage that the\nsystem cannot exceed during execution of the tool - optional")
+	app.outFile = flag.String("o", "Stdout", "`output file` for a generated report otherwise the report will be\nprinted to standard output - optional")
+	app.excludePathsFlag = flag.String("x", "", "comma seperated `list of regular expressions and/or files` (with regular\nexpressions) to be used to exclude files or directories during the scan.\nTypically usage is to exclude directories containing documentation, manual\npages or examples.")
+	app.versionFlg = flag.Bool("v", false, "prints `version information`")
+	//app.helpFlg = flag.Bool("h", false, "prints help")
 	flag.Usage = app.usage
 	flag.Parse()
 	app.paths = flag.Args()
@@ -100,34 +100,46 @@ func (app *App) Init() {
 }
 
 func (app *App) usage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] \"space seperated directories to scan\"\n", filepath.Base(os.Args[0]))
-	flag.PrintDefaults()
+	//fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] \"space seperated directories to scan\"\n", filepath.Base(os.Args[0]))
+	//fmt.Fprintf(os.Stderr, "\nOPTIONS:\n")
+	//flag.PrintDefaults()
+
+	fmt.Fprintf(os.Stderr, `
+secretshunter Version RC1.1 Released 08.2023"
+Author: henryk.hruszka@nokia.com
+
+Usage: secretshunter [OPTIONS] "space seperated directories to scan"
+
+secrentshunter, when invoked without any parameters, will use defaults 
+and will scan the whole file system.  
+
+OPTIONS:
+  -c number of vCPUs
+	maximum number of vCPUs to be used by the tool - default (max available)
+  -o output file
+	output file for a generated report otherwise the report will be
+	printed to standard output
+  -p file
+	file with regular expression patterns of secrets that the tool is
+	supposed to scan found files for
+	Patterns can be found on https://github.com/mazen160/secrets-patterns-db
+  -t throttling value
+	throttling value (from 10 to 80), which sets maximum CPU usage that the
+	system cannot exceed during execution of the tool - (default 65)
+  -v version information
+	prints version information
+  -x list of regular expressions and/or files
+	comma seperated list of regular expressions and/or files (with regular
+	expressions) to be used to exclude files or directories during the scan.
+	Typically usage is to exclude directories containing documentation, manual
+	pages or examples.
+`)
 	os.Exit(2)
 }
 
 func (app *App) version() {
-	fmt.Println("Version 1.0 Released 04.2023")
+	fmt.Println("Version RC1.1 Released 08.2023")
 	fmt.Printf(license)
-
-	//	fmt.Printf(`Copyright 2023 Henryk Hruszka
-	//SPDX-License-Identifier: AGPLv3
-	//
-	//This software is provided "as is" and the author disclaims all warranties
-	//with regard to this software including all implied warranties of
-	//merchantability and fitness. In no event shall the author be liable for any
-	//special, direct, indirect, or consequential damages or any damages
-	//whatsoever resulting from loss of use, data or profits, whether in an
-	//action of contract, negligence or other tortious action, arising out of or
-	//in connection with the use or performance of this software.
-	//	`)
-	//
-	//	fmt.Printf(`
-	//This code includes third-party packages that are subject to their respective licenses:
-	//- github.com/gabriel-vasile/mimetype is licensed under the MIT License. See https://github.com/gabriel-vasile/mimetype/blob/master/LICENSE for details.
-	//- gobyexample.com/rate-limiting is licensed under the CC BY 3.0.See https://github.com/mmcgrana/gobyexample#license.
-	//- github.com/dlclark/regexp2 is licensed under the Apache License, Version 2.0. See https://github.com/dlclark/regexp2/blob/master/LICENSE for details.
-	//Please review these licenses before using this code or these packages in your own projects.
-	//	`)
 }
 
 func (app *App) Start() {
@@ -142,39 +154,43 @@ func (app *App) Start() {
 
 	// check if a minimum set of parameters was passed to the program
 	if len(*app.patternsFile) == 0 {
-		//app.patternsFile =
+		app.patterns, err = DefaultPatterns()
+		if err != nil {
+			log.Fatalf("[!!] Internal application error. Default secrets patterns cannot be initialized due to: %s\n", err.Error())
+		}
+		fmt.Printf("[*] No file with secret patterns provided, using default %d secret patterns\n", app.patterns.Num())
+	} else {
+		if _, err = os.Stat(*app.patternsFile); os.IsNotExist(err) {
+			log.Fatalf("[!!] Provided file with secret patterns cannot be accessed: %s\n", err.Error())
+		}
+
+		if app.patterns, err = NewPatterns(*app.patternsFile); err != nil {
+			log.Fatalf("[!!] Secret patterns cannot be loaded from the provided file %s due to %s\n", *app.patternsFile, err.Error())
+		}
+		fmt.Printf("[*] Loaded %d secret patterns from %s file\n", app.patterns.Num(), *app.patternsFile)
 	}
 
 	if len(app.paths) == 0 {
 		app.paths = append(app.paths, filepath.Join("/"))
-	}
-
-	if _, err = os.Stat(*app.patternsFile); os.IsNotExist(err) {
-		log.Fatalf("[!!] Provided file with patterns cannot be accessed: %s\n", err.Error())
+		log.Printf("[+] No search paths provided, defaulting the search path to %s\n", strings.Join(app.paths, " "))
 	}
 
 	if *app.maxCpuLoadLimit < 10 || *app.maxCpuLoadLimit > 80 {
-		log.Fatalf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80\n", *app.maxCpuLoadLimit)
+		log.Printf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80\n. Defaulting to 65\n", *app.maxCpuLoadLimit)
+		*app.maxCpuLoadLimit = 65
 	}
 
 	if *app.maxNumberOfCpu < 1 || *app.maxNumberOfCpu > runtime.NumCPU() {
-		log.Fatalf("[!!] Provided number of vCPUs %d is not in the range from 1 to %d.\n", *app.maxNumberOfCpu, runtime.NumCPU())
+		log.Printf("[!!] Provided number of vCPUs %d is not in the range from 1 to %d.\nDefaulting to the number of available vCPUs on the system (%d).\n", *app.maxNumberOfCpu, runtime.NumCPU(), runtime.NumCPU())
+		*app.maxNumberOfCpu = runtime.NumCPU()
 	}
 
 	app.verifyPaths()
 	app.verifyExcludedPaths()
 
-	//if len(app.excludedPaths) > 0 {
-	//	for cnt, pat := range app.excludedPaths {
-	//		log.Printf("[%d] %s", cnt, pat)
-	//	}
-	//}
-
-	if app.patterns, err = NewPatterns(*app.patternsFile); err != nil {
-		log.Fatalln(err.Error())
+	if len(*app.excludePathsFlag) == 0 {
+		log.Printf("[+] No regular expressions provided for excluding file paths, using defaults ones\n\t%s", strings.Join(app.excludedPaths, "\n\t"))
 	}
-
-	fmt.Printf("[*] Loaded %d patterns from %s file\n", app.patterns.Num(), *app.patternsFile)
 
 	if *app.outFile != "Stdout" {
 		app.fdout, err = os.Create(*app.outFile)
@@ -257,6 +273,9 @@ func (app *App) verifyExcludedPaths() {
 
 	if len(*app.excludePathsFlag) > 0 {
 		patterns = strings.Split(*app.excludePathsFlag, ",")
+	} else {
+		app.excludedPaths = defaultExcludePatterns
+		return
 	}
 
 	if len(patterns) == 1 {

@@ -25,7 +25,7 @@ func bToMb(b uint64) uint64 {
 func timer(message string) func() {
 	start := time.Now()
 	return func() {
-		fmt.Printf("%s %v\n", message, time.Since(start))
+		fmt.Printf("%s %dms\n", message, time.Since(start).Milliseconds())
 	}
 }
 

@@ -1,4 +1,4 @@
-.*\/(man|docs?|examples?|python[23]\..+)(\/|$).*
+.*\/(man|docs?|examples?|python[23]|pearl5\..+)(\/|$).*
 ^\/home(\/|$)
 ^\/proc(\/|$)
 ^\/sys(\/|$)
