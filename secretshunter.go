@@ -176,12 +176,12 @@ func (app *App) Start() {
 	}
 
 	if *app.maxCpuLoadLimit < 10 || *app.maxCpuLoadLimit > 80 {
-		log.Printf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80\n. Defaulting to 65\n", *app.maxCpuLoadLimit)
+		log.Printf("[!!] Provided maximum CPU usage %d is not in the range from 10 to 80. Defaulting to 65.\n", *app.maxCpuLoadLimit)
 		*app.maxCpuLoadLimit = 65
 	}
 
 	if *app.maxNumberOfCpu < 1 || *app.maxNumberOfCpu > runtime.NumCPU() {
-		log.Printf("[!!] Provided number of vCPUs %d is not in the range from 1 to %d.\nDefaulting to the number of available vCPUs on the system (%d).\n", *app.maxNumberOfCpu, runtime.NumCPU(), runtime.NumCPU())
+		log.Printf("[!!] Provided number of %d vCPUs is not valid. Defaulting to the number of vCPUs on the system (%d vCPUs).\n", *app.maxNumberOfCpu, runtime.NumCPU())
 		*app.maxNumberOfCpu = runtime.NumCPU()
 	}
 
@@ -189,7 +189,7 @@ func (app *App) Start() {
 	app.verifyExcludedPaths()
 
 	if len(*app.excludePathsFlag) == 0 {
-		log.Printf("[+] No regular expressions provided for excluding file paths, using defaults ones\n\t%s", strings.Join(app.excludedPaths, "\n\t"))
+		log.Printf("[+] No regular expressions provided for excluding file paths, using defaults ones:\n\t%s", strings.Join(app.excludedPaths, "\n\t"))
 	}
 
 	if *app.outFile != "Stdout" {
