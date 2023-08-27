@@ -141,8 +141,12 @@ func (app *App) Start() {
 	}
 
 	// check if a minimum set of parameters was passed to the program
-	if len(*app.patternsFile) == 0 || len(app.paths) == 0 {
-		app.usage()
+	if len(*app.patternsFile) == 0 {
+		//app.patternsFile =
+	}
+
+	if len(app.paths) == 0 {
+		app.paths = append(app.paths, filepath.Join("/"))
 	}
 
 	if _, err = os.Stat(*app.patternsFile); os.IsNotExist(err) {
