@@ -2,13 +2,16 @@ package main
 
 import (
 	"gopkg.in/yaml.v3"
+	"log"
 	"os"
+	"regexp"
 )
 
 type Pattern struct {
-	Name       string `yaml:"name"`
-	Regex      string `yaml:"regex"`
-	Confidence string `yaml:"confidence"`
+	Name          string         `yaml:"name"`
+	Regex         string         `yaml:"regex"`
+	Confidence    string         `yaml:"confidence"`
+	CompiledRegex *regexp.Regexp `yaml:"-"`
 }
 
 type PatternsFile struct {
@@ -57,6 +60,10 @@ func (p *Patterns) load() error {
 
 	p.patterns = []Pattern{}
 	for _, dataElement := range data.Patterns {
+		dataElement.Pattern.CompiledRegex, err = regexp.Compile(dataElement.Pattern.Regex)
+		if err != nil {
+			log.Fatalf("Compilation of regex %q failed with error: %s\nAborting!!!\n", dataElement.Pattern.Regex, err.Error())
+		}
 		p.patterns = append(p.patterns, dataElement.Pattern)
 	}
 
@@ -65,14 +72,22 @@ func (p *Patterns) load() error {
 
 func (p *Patterns) read(yamlPatterns string) error {
 	var data []Pattern
+	var err error
 
-	err := yaml.Unmarshal([]byte(defaultPatterns), &data)
+	err = yaml.Unmarshal([]byte(defaultPatterns), &data)
 	if err != nil {
 		return err
 	}
 
-	p.file = ""
 	p.patterns = data
+	p.file = ""
+
+	for idx, pattern := range p.patterns {
+		p.patterns[idx].CompiledRegex, err = regexp.Compile(pattern.Regex)
+		if err != nil {
+			log.Fatalf("Compilation of regex %q failed with error: %s\nAborting!!!\n", pattern.Regex, err.Error())
+		}
+	}
 
 	return nil
 }

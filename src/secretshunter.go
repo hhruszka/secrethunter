@@ -24,7 +24,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -65,6 +64,7 @@ type App struct {
 	patternsFile     *string
 	maxNumberOfCpu   *int
 	maxCpuLoadLimit  *int
+	forceFlg         *bool
 	outFile          *string
 	excludePathsFlag *string
 	paths            []string
@@ -91,6 +91,7 @@ func (app *App) Init() {
 	app.outFile = flag.String("o", "Stdout", "`output file` for a generated report otherwise the report will be\nprinted to standard output - optional")
 	app.excludePathsFlag = flag.String("x", "", "comma seperated `list of regular expressions and/or files` (with regular\nexpressions) to be used to exclude files or directories during the scan.\nTypically usage is to exclude directories containing documentation, manual\npages or examples.")
 	app.versionFlg = flag.Bool("v", false, "prints `version information`")
+	app.forceFlg = flag.Bool("f", false, "this flag `forces execution` and inhibits throttling")
 	//app.helpFlg = flag.Bool("h", false, "prints help")
 	flag.Usage = app.usage
 	flag.Parse()
@@ -100,11 +101,7 @@ func (app *App) Init() {
 }
 
 func (app *App) usage() {
-	//fmt.Fprintf(os.Stderr, "Usage: %s [OPTIONS] \"space seperated directories to scan\"\n", filepath.Base(os.Args[0]))
-	//fmt.Fprintf(os.Stderr, "\nOPTIONS:\n")
-	//flag.PrintDefaults()
-
-	fmt.Fprintf(os.Stderr, `
+	_, _ = fmt.Fprintf(os.Stderr, `
 secretshunter Version RC1.1 Released 08.2023"
 Author: henryk.hruszka@nokia.com
 
@@ -210,12 +207,16 @@ func (app *App) Start() {
 		Measurements:    3,                      // use the avg of the last 3 measurements
 	}
 
-	app.limiter.Start()
+	if !*app.forceFlg {
+		_ = app.limiter.Start()
+	}
 }
 
 func (app *App) Stop() {
-	app.fdout.Close()
-	app.limiter.Stop()
+	_ = app.fdout.Close()
+	if !*app.forceFlg {
+		app.limiter.Stop()
+	}
 }
 
 func (app *App) verifyDirectories() {
@@ -290,7 +291,7 @@ func (app *App) verifyExcludedPaths() {
 			if err != nil {
 				log.Fatalf("[!!] Cannot open file %s with path exclusion patterns due to error: %s. Aborting.\n", filePath, err)
 			}
-			defer readFile.Close()
+			defer func() { _ = readFile.Close() }()
 
 			fileScanner := bufio.NewScanner(readFile)
 			fileScanner.Split(bufio.ScanLines)
@@ -308,12 +309,13 @@ func (app *App) verifyExcludedPaths() {
 
 func (app *App) scanWithRegex(text string) (*Pattern, string) {
 	for _, pattern := range app.patterns.Get() {
-		if reg, err := regexp.Compile(pattern.Regex); err != nil {
-			log.Println(err.Error())
-		} else if match := reg.FindStringSubmatch(text); len(match) > 0 {
+		if match := pattern.CompiledRegex.FindStringSubmatch(text); len(match) > 0 {
 			return &pattern, strings.Clone(match[0])
 		}
-		app.limiter.Wait()
+
+		if !*app.forceFlg {
+			app.limiter.Wait()
+		}
 	}
 	return nil, ""
 }
@@ -325,13 +327,10 @@ func (app *App) scanFile(file string) *ScanResults {
 		log.Println(err.Error())
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Splits on newlines by default.
 	scanner := bufio.NewScanner(f)
-
-	//buf := make([]byte, 0, 64*1024)
-	//scanner.Buffer(buf, 1024*1024)
 
 	line := 1
 	foundSecrets := map[int]Secret{}
@@ -357,14 +356,14 @@ func (app *App) worker(wg *sync.WaitGroup, jobs chan string, scans chan *ScanRes
 		if scan := app.scanFile(file); scan != nil {
 			scans <- scan
 		}
-		bar.Add(1)
+		_ = bar.Add(1)
 	}
 }
 
 func (app *App) ScanFiles(files []string) ([]*ScanResults, int) {
 	var wg sync.WaitGroup
-	var jobs chan string = make(chan string, *app.maxNumberOfCpu)
-	var scans chan *ScanResults = make(chan *ScanResults, 50)
+	var jobs = make(chan string, *app.maxNumberOfCpu)
+	var scans = make(chan *ScanResults, 50)
 	var secretsCount int
 
 	// calculate how long it took  to scan a file system
@@ -384,7 +383,7 @@ func (app *App) ScanFiles(files []string) ([]*ScanResults, int) {
 	rg.Add(1)
 
 	// start goroutine which collects secrets found by workers
-	var secrets = []*ScanResults{}
+	var secrets []*ScanResults
 	go func(secrets *[]*ScanResults, secretsFound *int) {
 		defer rg.Done()
 
@@ -413,15 +412,10 @@ func (app *App) ScanFiles(files []string) ([]*ScanResults, int) {
 	return secrets, secretsCount
 }
 
-func main() {
-	var files []string
-	var excludedPaths []string
-
-	app := NewApp()
-	app.Start()
-	defer app.Stop()
+func (app *App) GetFiles() (files []string, excludedPaths []string) {
 
 	files = make([]string, len(app.files))
+
 	copy(files, app.files)
 
 	// start processing files
@@ -447,40 +441,114 @@ func main() {
 			excludedPaths = expaths
 		}
 	}
+	return files, excludedPaths
+}
 
-	// look for secrets in found files
-	scans, secretsFound := app.ScanFiles(files)
-
+func (app *App) GenReport(scans []*ScanResults, secretsFound int, excludedPaths []string) {
 	if len(scans) > 0 {
 		if *app.outFile != "Stdout" {
 			fmt.Printf("[+] Found %d secrets in %d files\n", secretsFound, len(scans))
 		}
 
-		fmt.Fprintf(app.fdout, "[+] Found %d secrets in %d files\n", secretsFound, len(scans))
+		_, _ = fmt.Fprintf(app.fdout, "[+] Found %d secrets in %d files\n", secretsFound, len(scans))
 		// deliver scan results
 		for _, scan := range scans {
-			fmt.Fprintf(app.fdout, "[+] Found %d secret(s) in %s file\n", len(scan.secrets), scan.file)
+			_, _ = fmt.Fprintf(app.fdout, "[+] Found %d secret(s) in %s file\n", len(scan.secrets), scan.file)
 			for _, secret := range scan.secrets {
-				fmt.Fprintf(app.fdout, "\tLine: %d %s: %q\n", secret.LineNumber, secret.SecretType, secret.SecretValue)
+				_, _ = fmt.Fprintf(app.fdout, "\tLine: %d %s: %q\n", secret.LineNumber, secret.SecretType, secret.SecretValue)
 			}
 		}
 
-		fmt.Fprintf(app.fdout, "\n\n[*] Following files have to be reviewed to determine impact of found secrets\n")
+		_, _ = fmt.Fprintf(app.fdout, "\n\n[*] Following files have to be reviewed to determine impact of found secrets\n")
 		// list files with found secrets
 		for _, scan := range scans {
-			fmt.Fprintf(app.fdout, "\t%s\n", scan.file)
+			_, _ = fmt.Fprintf(app.fdout, "\t%s\n", printFileInfo(scan.file))
 		}
 	} else {
 		if *app.outFile != "Stdout" {
 			fmt.Printf("[-] No secrets found\n")
 		}
-		fmt.Fprintf(app.fdout, "[-] No secrets found\n")
+		_, _ = fmt.Fprintf(app.fdout, "[-] No secrets found\n")
 	}
 
 	if len(excludedPaths) > 0 {
-		fmt.Fprintf(app.fdout, "\n\n[*] Following paths were excluded from a scan based on the provided patterns\n")
+		_, _ = fmt.Fprintf(app.fdout, "\n\n[*] Following paths were excluded from a scan based on the provided patterns\n")
 		for _, exPath := range excludedPaths {
-			fmt.Fprintf(app.fdout, "\t%s\n", exPath)
+			_, _ = fmt.Fprintf(app.fdout, "\t%s\n", exPath)
 		}
 	}
+}
+
+func main() {
+	var files []string
+	var excludedPaths []string
+
+	app := NewApp()
+	app.Start()
+	defer app.Stop()
+	//
+	//files = make([]string, len(app.files))
+	//copy(files, app.files)
+	//
+	//// start processing files
+	//for _, directory := range app.directories {
+	//	fmt.Printf("[*] Processing directory %s\n", directory)
+	//
+	//	// find plain text files a directory
+	//	fndfiles, expaths := func() ([]string, []string) {
+	//		message := fmt.Sprintf("\n[+] Finished scanning %s for files in", directory)
+	//		defer timer(message)()
+	//		return getFileList(directory, app.excludedPaths)
+	//	}()
+	//
+	//	if len(fndfiles) >= 0 {
+	//		fmt.Printf("[+] Found %d files in %s\n", len(fndfiles), directory)
+	//		files = append(files, fndfiles...)
+	//	} else {
+	//		fmt.Printf("[-] Nothing to scan in %s\n", directory)
+	//	}
+	//
+	//	if len(expaths) > 0 {
+	//		fmt.Printf("[+] %d paths were excluded based on provided patterns\n", len(expaths))
+	//		excludedPaths = expaths
+	//	}
+	//}
+
+	// look for secrets in found files
+	files, excludedPaths = app.GetFiles()
+	scans, secretsFound := app.ScanFiles(files)
+	app.GenReport(scans, secretsFound, excludedPaths)
+
+	//if len(scans) > 0 {
+	//	if *app.outFile != "Stdout" {
+	//		fmt.Printf("[+] Found %d secrets in %d files\n", secretsFound, len(scans))
+	//	}
+	//
+	//	fmt.Fprintf(app.fdout, "[+] Found %d secrets in %d files\n", secretsFound, len(scans))
+	//	// deliver scan results
+	//	for _, scan := range scans {
+	//		fmt.Fprintf(app.fdout, "[+] Found %d secret(s) in %s file\n", len(scan.secrets), scan.file)
+	//		for _, secret := range scan.secrets {
+	//			fmt.Fprintf(app.fdout, "\tLine: %d %s: %q\n", secret.LineNumber, secret.SecretType, secret.SecretValue)
+	//		}
+	//	}
+	//
+	//	fmt.Fprintf(app.fdout, "\n\n[*] Following files have to be reviewed to determine impact of found secrets\n")
+	//	// list files with found secrets
+	//	for _, scan := range scans {
+	//		fmt.Fprintf(app.fdout, "\t%s\n", scan.file)
+	//	}
+	//} else {
+	//	if *app.outFile != "Stdout" {
+	//		fmt.Printf("[-] No secrets found\n")
+	//	}
+	//	fmt.Fprintf(app.fdout, "[-] No secrets found\n")
+	//}
+	//
+	//if len(excludedPaths) > 0 {
+	//	fmt.Fprintf(app.fdout, "\n\n[*] Following paths were excluded from a scan based on the provided patterns\n")
+	//	for _, exPath := range excludedPaths {
+	//		fmt.Fprintf(app.fdout, "\t%s\n", exPath)
+	//	}
+	//}
 }
