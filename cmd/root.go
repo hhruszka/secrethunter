@@ -11,7 +11,7 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 
-	Use:     "secrethunter [command] [options] [parameters]",
+	Use:     "secrethunter command [options] [parameters]",
 	Short:   "",
 	Long:    ``,
 	Version: "v1.0.1",
