@@ -4,19 +4,22 @@ Copyright © 2023 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"fmt"
+	"secrethunter/app"
 
 	"github.com/spf13/cobra"
 )
 
 // base64Cmd represents the base64 command
 var base64Cmd = &cobra.Command{
-	Use:     "base64",
-	Short:   "Scan file system for base64 encoded secrets.",
-	Long:    ``,
+	Use:   "base64",
+	Short: "Scan file system for base64 encoded secrets.",
+	Long: `Scan file system for base64 encoded secrets (API keys, credentials etc.). 
+If no directories or files are provided for scanning then '/' root of a file 
+system will be scanned.`,
 	Aliases: []string{"base", "bs", "64"},
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("base64 called")
+		runapp := app.NewApp(app.Base64Scan, args, flags)
+		app.Run(runapp)
 	},
 }
 
