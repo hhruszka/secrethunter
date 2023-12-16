@@ -1,4 +1,4 @@
-package main
+package app
 
 var defaultExcludePatterns = []string{
 	`.*\/(man|docs?|examples?|python[23]\..+|perl5)(\/|$).*`,

@@ -1,6 +1,6 @@
-//go:build linux && amd64
+//go:build (linux && amd64) || darwin
 
-package main
+package app
 
 import (
 	"fmt"
