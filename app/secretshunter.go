@@ -182,9 +182,12 @@ func (app *App) Start() {
 	if app.reportFile != "Stdout" {
 		app.fdout, err = os.Create(app.reportFile)
 		if err != nil {
-			log.Fatalln(err.Error())
+			fmt.Printf("[!!] Cannot create report file %s due to the error %s\n", app.reportFile, err.Error())
+			fmt.Printf("[!!] Scan results will be printed to Stdout")
+			app.fdout = os.Stdout
+		} else {
+			fmt.Printf("[*] Scan results will be saved to %s file\n", app.reportFile)
 		}
-		fmt.Printf("[*] Scan results will be saved to %s file\n", app.reportFile)
 	}
 
 	// limit number of vCPUs used by the program
