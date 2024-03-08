@@ -14,7 +14,6 @@ import (
 // workers will use mimetype to determine a file type and decide whether to collect it
 func worker(id int, wg *sync.WaitGroup, jobs chan string, results chan string) {
 	defer wg.Done()
-	//defer close(results)
 
 	for fp := range jobs {
 		fm, err := mimetype.DetectFile(fp)

@@ -1,5 +1,10 @@
 package app
 
+import "regexp"
+
+var base64Regex = regexp.MustCompile(`^(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$`)
+var wordsRegex = regexp.MustCompile(`\W+`)
+
 var defaultExcludePatterns = []string{
 	`.*\/(man|docs?|examples?|python[23]\..+|perl5)(\/|$).*`,
 	`^\/home(\/|$)`,

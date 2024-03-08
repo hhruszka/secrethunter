@@ -6,10 +6,15 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 	"runtime"
-	"secrethunter/app"
 )
 
-var flags app.Options
+var (
+	reportFile       string
+	excludedPaths    string
+	cpuWorkloadLimit int
+	maxCPU           int
+	forceFlg         bool
+)
 
 // scanCmd represents the scan command
 var scanCmd = &cobra.Command{
@@ -24,9 +29,9 @@ scanning then '/' root of a file system will be scanned.
 func init() {
 	rootCmd.AddCommand(scanCmd)
 
-	scanCmd.PersistentFlags().StringVarP(&flags.ReportFile, "out", "o", "Stdout", "output file for a generated report otherwise the report will be\nprinted to standard output")
-	scanCmd.PersistentFlags().StringVarP(&flags.ExcludedPaths, "exclusions", "x", "", "comma seperated list of regular expressions and/or files (with regular\nexpressions) to be used to exclude files or directories during the scan.\nTypically usage is to exclude directories containing documentation,\nmanual pages or examples.")
-	scanCmd.PersistentFlags().IntVarP(&flags.CpuWorkloadLimit, "throttling", "t", 65, "throttling value (from 10 to 80), which sets maximum CPU usage that\nthe system cannot exceed during execution of the tool")
-	scanCmd.PersistentFlags().IntVarP(&flags.MaxCPU, "cpu", "c", runtime.NumCPU(), "maximum number of vCPUs to be used by the tool")
-	scanCmd.PersistentFlags().BoolVarP(&flags.ForceFlg, "force", "f", false, "force execution inhibit throttling")
+	scanCmd.PersistentFlags().StringVarP(&reportFile, "out", "o", "Stdout", "output file for a generated report otherwise the report will be\nprinted to standard output")
+	scanCmd.PersistentFlags().StringVarP(&excludedPaths, "exclusions", "x", "", "comma seperated list of regular expressions and/or files (with regular\nexpressions) to be used to exclude files or directories during the scan.\nTypically usage is to exclude directories containing documentation,\nmanual pages or examples.")
+	scanCmd.PersistentFlags().IntVarP(&cpuWorkloadLimit, "throttling", "t", 65, "throttling value (from 10 to 80), which sets maximum CPU usage that\nthe system cannot exceed during execution of the tool")
+	scanCmd.PersistentFlags().IntVarP(&maxCPU, "cpu", "c", runtime.NumCPU(), "maximum number of vCPUs to be used by the tool")
+	scanCmd.PersistentFlags().BoolVarP(&forceFlg, "force", "f", false, "force execution inhibit throttling")
 }

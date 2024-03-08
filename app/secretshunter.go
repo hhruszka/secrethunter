@@ -19,13 +19,18 @@ package app
 
 import (
 	"bufio"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/meryemchafry/go-cpulimit"
 	"github.com/schollz/progressbar/v3"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"unicode"
+
 	//"secrethunter/cmd"
 	"strings"
 	"sync"
@@ -57,6 +62,8 @@ type Options struct {
 	CpuWorkloadLimit int
 	MaxCPU           int
 	ForceFlg         bool
+	MinimumEntropy   float64
+	MinimumLength    int
 }
 
 type Secret struct {
@@ -79,21 +86,23 @@ const (
 )
 
 type App struct {
-	scanType         ScanType
-	fdout            *os.File
-	patternsFile     string
-	maxNumberOfCpu   int
-	maxCpuLoadLimit  int
-	forceFlg         bool
-	reportFile       string
-	excludePathsFlag string
-	paths            []string
-	directories      []string // directories to scan
-	excludedPaths    []string // directories and patterns to exclude
-	files            []string // files to scan
-	limiter          *cpulimit.Limiter
-	patterns         *Patterns
-	ScanFileFunc     func(file string) *ScanResults
+	scanType               ScanType
+	fdout                  *os.File
+	patternsFile           string
+	maxNumberOfCpu         int
+	maxCpuLoadLimit        int
+	forceFlg               bool
+	reportFile             string
+	excludePathsFlag       string
+	paths                  []string
+	directories            []string // directories to scan
+	excludedPaths          []string // directories and patterns to exclude
+	files                  []string // files to scan
+	limiter                *cpulimit.Limiter
+	patterns               *Patterns
+	ScanFileFunc           func(file string) *ScanResults
+	passwordMinimumEntropy float64
+	passwordMinimumLength  int
 }
 
 func NewApp(scanType ScanType, searchPaths []string, flags Options) *App {
@@ -105,6 +114,8 @@ func NewApp(scanType ScanType, searchPaths []string, flags Options) *App {
 	app.excludePathsFlag = flags.ExcludedPaths
 	app.forceFlg = flags.ForceFlg
 	app.paths = searchPaths
+	app.passwordMinimumLength = flags.MinimumLength
+	app.passwordMinimumEntropy = flags.MinimumEntropy
 
 	if flags.ReportFile != "" {
 		app.reportFile = flags.ReportFile
@@ -297,17 +308,26 @@ func (app *App) verifyExcludedPaths() {
 	}
 }
 
-func (app *App) scanWithRegex(text string) (*Pattern, string) {
+type RegexMatches struct {
+	pattern *Pattern
+	matches []string
+}
+
+func (app *App) scanWithRegex(text string) []RegexMatches {
+	// TODO: it has to iterate through all patterns and return a slice with found patterns and matches
+	//       since text line potentially can contain multiple patterns
+	var foundMatches []RegexMatches
+
 	for _, pattern := range app.patterns.Get() {
-		if match := pattern.CompiledRegex.FindStringSubmatch(text); len(match) > 0 {
-			return &pattern, strings.Clone(match[0])
+		if matches := pattern.CompiledRegex.FindAllString(text, -1); len(matches) > 0 {
+			foundMatches = append(foundMatches, RegexMatches{pattern: &pattern, matches: matches})
 		}
 
 		if !app.forceFlg {
 			app.limiter.Wait()
 		}
 	}
-	return nil, ""
+	return foundMatches
 }
 
 func (app *App) ScanFileWithRegex(file string) *ScanResults {
@@ -326,8 +346,12 @@ func (app *App) ScanFileWithRegex(file string) *ScanResults {
 	foundSecrets := map[int]Secret{}
 
 	for scanner.Scan() {
-		if pattern, match := app.scanWithRegex(scanner.Text()); pattern != nil {
-			foundSecrets[line] = Secret{SecretType: pattern.Name, SecretValue: match, LineNumber: line}
+		foundMatches := app.scanWithRegex(scanner.Text())
+
+		for _, found := range foundMatches {
+			for _, match := range found.matches {
+				foundSecrets[line] = Secret{SecretType: found.pattern.Name, SecretValue: match, LineNumber: line}
+			}
 		}
 		line++
 	}
@@ -339,20 +363,175 @@ func (app *App) ScanFileWithRegex(file string) *ScanResults {
 	}
 }
 
-func (app *App) scanWithEntropy(text string) (*Pattern, string) {
-	return nil, ""
+func calculateEntropy(s string) float64 {
+	charCount := make(map[rune]float64)
+
+	// Count the occurrences of each character
+	for _, char := range s {
+		charCount[char]++
+	}
+
+	// Calculate the entropy
+	var entropy float64
+	for _, count := range charCount {
+		probability := count / float64(len(s))
+		entropy += -probability * math.Log2(probability)
+	}
+
+	return entropy
+}
+
+func estimatePasswordEntropy(password string) float64 {
+	charCount := make(map[rune]float64)
+	var entropy float64
+	charsetSize := 0
+	hasLower := false
+	hasUpper := false
+	hasDigit := false
+	hasSymbol := false
+
+	for _, char := range password {
+		switch {
+		case unicode.IsLower(char) && !hasLower:
+			hasLower = true
+			charsetSize += 26
+		case unicode.IsUpper(char) && !hasUpper:
+			hasUpper = true
+			charsetSize += 26
+		case unicode.IsDigit(char) && !hasDigit:
+			hasDigit = true
+			charsetSize += 10
+		case (unicode.IsPunct(char) || unicode.IsSymbol(char)) && !hasSymbol:
+			hasSymbol = true
+			charsetSize += 32 // Adjust based on the symbols you want to include
+		}
+
+		charCount[char]++
+	}
+
+	for _, count := range charCount {
+		probability := count / float64(charsetSize)
+		probability = probability * count / float64(len(password))
+		entropy += -probability * math.Log2(probability)
+	}
+
+	//entropy := float64(len(password)) * math.Log2(float64(charsetSize))
+	return entropy
+}
+
+func isPassword(password string, minEntropy float64, minLen int) bool {
+	//const minimumEntropy = 60.0
+	//const minimumLength = 12
+
+	entropy := estimatePasswordEntropy(password)
+	//entropy := calculateEntropy(password)
+
+	// Check entropy, length, and character variety
+	return entropy >= minEntropy && len(password) >= minLen
+}
+
+func (app *App) scanWithEntropy(text string) []string {
+	var words []string = wordsRegex.Split(text, -1)
+	var matches []string
+
+	for _, word := range words {
+		if isPassword(word, app.passwordMinimumEntropy, app.passwordMinimumLength) {
+			matches = append(matches, word)
+		}
+	}
+	return matches
 }
 
 func (app *App) ScanFileWithEntropy(file string) *ScanResults {
-	return nil
+	f, err := os.Open(file)
+
+	if err != nil && !os.IsNotExist(err) {
+		log.Println(err.Error())
+		return nil
+	}
+	defer func() { _ = f.Close() }()
+
+	// Splits on newlines by default.
+	scanner := bufio.NewScanner(f)
+
+	line := 1
+	foundSecrets := map[int]Secret{}
+
+	for scanner.Scan() {
+		matches := app.scanWithEntropy(scanner.Text())
+		for _, match := range matches {
+			foundSecrets[line] = Secret{SecretType: "entropy", SecretValue: match, LineNumber: line}
+		}
+
+		line++
+	}
+
+	if len(foundSecrets) > 0 {
+		return &ScanResults{file: file, secrets: foundSecrets}
+	} else {
+		return nil
+	}
 }
 
-func (app *App) scanWithBase64(text string) (*Pattern, string) {
-	return nil, ""
+func isBase64DecodedStringPrintable(s string) (string, error) {
+	decodedBytes, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return "", err // Not a valid base64 or other decode error
+	}
+
+	for _, b := range decodedBytes {
+		if !unicode.IsPrint(rune(b)) || unicode.IsSymbol(rune(b)) || unicode.IsControl(rune(b)) {
+			return "", errors.New("Decoded base64 string consists of non-printable charaters") // Contains non-printable characters
+		}
+	}
+
+	return string(decodedBytes), nil // All characters are printable
+}
+
+func (app *App) scanWithBase64(text string) []string {
+	var words []string = wordsRegex.Split(text, -1)
+	var matches []string
+
+	for _, word := range words {
+		if len(word) >= 12 && base64Regex.MatchString(word) {
+			decoded, err := isBase64DecodedStringPrintable(word)
+			if err == nil {
+				matches = append(matches, fmt.Sprintf("%s => %s", word, decoded))
+			}
+		}
+	}
+	return matches
 }
 
 func (app *App) ScanFileWithBase64(file string) *ScanResults {
-	return nil
+	f, err := os.Open(file)
+
+	if err != nil && !os.IsNotExist(err) {
+		log.Println(err.Error())
+		return nil
+	}
+	defer func() { _ = f.Close() }()
+
+	// Splits on newlines by default.
+	scanner := bufio.NewScanner(f)
+
+	line := 1
+	foundSecrets := map[int]Secret{}
+
+	for scanner.Scan() {
+		matches := app.scanWithBase64(scanner.Text())
+		for _, match := range matches {
+			foundSecrets[line] = Secret{SecretType: "base64", SecretValue: match, LineNumber: line}
+		}
+
+		line++
+	}
+
+	if len(foundSecrets) > 0 {
+		return &ScanResults{file: file, secrets: foundSecrets}
+	} else {
+		return nil
+	}
 }
 
 func (app *App) worker(wg *sync.WaitGroup, jobs chan string, scans chan *ScanResults, bar *progressbar.ProgressBar) {

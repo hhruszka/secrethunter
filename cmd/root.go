@@ -1,5 +1,5 @@
 /*
-Copyright © 2023 NAME HERE <EMAIL ADDRESS>
+Copyright © 2023 Henryk Hruszka <hhruszka@gmail.com>
 */
 package cmd
 
@@ -10,8 +10,7 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-
-	Use:     "secrethunter command [options] [parameters]",
+	Use:     "secrethunter",
 	Short:   "",
 	Long:    ``,
 	Version: "v1.0.1",
@@ -27,5 +26,4 @@ func Execute() {
 }
 
 func init() {
-	//rootCmd.PersistentFlags().BoolP("version", "v", false, "prints version information")
 }

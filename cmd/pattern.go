@@ -8,6 +8,10 @@ import (
 	"secrethunter/app"
 )
 
+var (
+	fileWithPatterns string
+)
+
 // patternCmd represents the pattern command
 var patternCmd = &cobra.Command{
 	Use:   "pattern [space separated list of directories or files to scan]",
@@ -18,7 +22,15 @@ If no directories or files are provided for scanning then '/' root of a file
 system will be scanned.
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		runapp := app.NewApp(app.PatternScan, args, flags)
+		options := app.Options{
+			FileWithPatterns: fileWithPatterns,
+			ReportFile:       reportFile,
+			ExcludedPaths:    excludedPaths,
+			CpuWorkloadLimit: cpuWorkloadLimit,
+			MaxCPU:           maxCPU,
+			ForceFlg:         forceFlg,
+		}
+		runapp := app.NewApp(app.PatternScan, args, options)
 		app.Run(runapp)
 	},
 }
@@ -26,6 +38,6 @@ system will be scanned.
 func init() {
 	scanCmd.AddCommand(patternCmd)
 
-	patternCmd.Flags().StringVarP(&flags.FileWithPatterns, "patterns", "p", "", "file with regular expression patterns of secrets that the tool is\nsupposed to scan found files for. The file has to follow specific format.\nPatterns can be found on https://github.com/mazen160/secrets-patterns-db")
+	patternCmd.Flags().StringVarP(&fileWithPatterns, "patterns", "p", "", "file with regular expression patterns of secrets that the tool is\nsupposed to scan found files for. The file has to follow specific format.\nPatterns can be found on https://github.com/mazen160/secrets-patterns-db")
 	patternCmd.MarkFlagRequired("patterns")
 }
