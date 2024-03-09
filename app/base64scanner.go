@@ -72,7 +72,8 @@ func isBase64DecodedString(s string) (string, error) {
 	if utf8string.NewString(decStr).IsASCII() {
 		for _, r := range decStr {
 			//r := rune(decStr[idx])
-			if !unicode.IsDigit(r) && !unicode.IsLetter(r) && !unicode.IsPunct(r) {
+			//if !unicode.IsDigit(r) && !unicode.IsLetter(r) && !unicode.IsPunct(r) {
+			if !unicode.IsPrint(r) && !unicode.IsSpace(r) {
 				// Contains non-printable characters
 				return "", errors.New("Decoded base64 string consists of non-printable characters")
 			}
