@@ -64,6 +64,7 @@ type Options struct {
 	ForceFlg         bool
 	MinimumEntropy   float64
 	MinimumLength    int
+	MinWordLength    int
 }
 
 type Secret struct {
@@ -103,6 +104,7 @@ type App struct {
 	ScanFileFunc           func(file string) *ScanResults
 	passwordMinimumEntropy float64
 	passwordMinimumLength  int
+	minWordLength          int
 }
 
 func NewApp(scanType ScanType, searchPaths []string, flags Options) *App {
@@ -116,6 +118,7 @@ func NewApp(scanType ScanType, searchPaths []string, flags Options) *App {
 	app.paths = searchPaths
 	app.passwordMinimumLength = flags.MinimumLength
 	app.passwordMinimumEntropy = flags.MinimumEntropy
+	app.minWordLength = flags.MinWordLength
 
 	if flags.ReportFile != "" {
 		app.reportFile = flags.ReportFile
@@ -524,7 +527,7 @@ func checkRuneType(c rune) {
 
 }
 
-func isBase64DecodedStringPrintable(s string) (string, error) {
+func isBase64DecodedString(s string) (string, error) {
 	decodedBytes, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
 		return "", err // Not a valid base64 or other decode error
@@ -550,9 +553,8 @@ func (app *App) scanWithBase64(text string) []string {
 	var matches []string
 
 	for _, word := range words {
-		//fmt.Println(word)
-		if len(word) >= 8 && base64Regex.MatchString(word) {
-			decoded, err := isBase64DecodedStringPrintable(word)
+		if len(word) >= app.minWordLength && base64Regex.MatchString(word) {
+			decoded, err := isBase64DecodedString(word)
 			if err == nil {
 				matches = append(matches, fmt.Sprintf("%s => %s", word, decoded))
 			}

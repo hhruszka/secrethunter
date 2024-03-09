@@ -9,6 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	minWordLength int
+)
+
 // base64Cmd represents the base64 command
 var base64Cmd = &cobra.Command{
 	Use:   "base64",
@@ -24,6 +28,7 @@ system will be scanned.`,
 			CpuWorkloadLimit: cpuWorkloadLimit,
 			MaxCPU:           maxCPU,
 			ForceFlg:         forceFlg,
+			MinWordLength:    minWordLength,
 		}
 		runapp := app.NewApp(app.Base64Scan, args, options)
 		app.Run(runapp)
@@ -32,4 +37,5 @@ system will be scanned.`,
 
 func init() {
 	scanCmd.AddCommand(base64Cmd)
+	base64Cmd.Flags().IntVarP(&minWordLength, "length", "l", 8, "minimum length of a word to consider it for base64 analysis")
 }
