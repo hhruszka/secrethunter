@@ -108,7 +108,8 @@ func getFileList(directory string, paths2exclude []string) (files []string, excl
 				return nil
 			}
 
-			if d.IsDir() && isExcludedRegEx(path, paths2exclude) {
+			//if d.IsDir() && isExcludedRegEx(path, paths2exclude) {
+			if isExcludedRegEx(path, paths2exclude) {
 				excluded <- path
 				return filepath.SkipDir
 			}
