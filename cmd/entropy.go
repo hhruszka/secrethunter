@@ -40,6 +40,5 @@ system will be scanned.
 
 func init() {
 	scanCmd.AddCommand(entropyCmd)
-	entropyCmd.Flags().Float64VarP(&minimumEntropy, "minimum-entropy", "e", 60.0, "minimum entropy of password (password strength)")
-	entropyCmd.Flags().IntVarP(&minimumLength, "minimum-length", "l", 8, "minimum length of password ")
+	entropyCmd.Flags().IntVarP(&minimumLength, "min-length", "l", 8, "minimum length of password ")
 }

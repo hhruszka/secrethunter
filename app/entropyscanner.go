@@ -5,8 +5,15 @@ import (
 	"log"
 	"math"
 	"os"
+	"slices"
 	"unicode"
 )
+
+type Entropy struct {
+	Avg float64 `json:"Avg"`
+	Min float64 `json:"Min"`
+	Max float64 `json:"Max"`
+}
 
 func calculateEntropy(s string) float64 {
 	charCount := make(map[rune]float64)
@@ -64,23 +71,31 @@ func estimatePasswordEntropy(password string) float64 {
 	return entropy
 }
 
-func isPassword(password string, minEntropy float64, minLen int) bool {
-	//const minimumEntropy = 60.0
-	//const minimumLength = 12
-
-	entropy := estimatePasswordEntropy(password)
-	//entropy := calculateEntropy(password)
-
-	// Check entropy, length, and character variety
-	return entropy >= minEntropy && len(password) >= minLen
+func isPassword(password string, entropyFunc func(string) float64, entropy float64) bool {
+	return entropyFunc(password) > entropy
 }
 
-func (app *App) scanWithEntropy(text string) []string {
+func (app *App) scanWithEntropy(text string, entropyset map[int]Entropy, entropyFunc func(string) float64) []string {
 	var words []string = wordsRegex.Split(text, -1)
 	var matches []string
 
+	var keys []int
+	for key := range entropyset {
+		keys = append(keys, key)
+	}
+
+	maxLen := slices.Max(keys)
+	if maxLen > 32 {
+		maxLen = 32
+	}
+
+	minLen := slices.Min(keys)
+	if minLen < 8 {
+		minLen = 8
+	}
+
 	for _, word := range words {
-		if isPassword(word, app.passwordMinimumEntropy, app.passwordMinimumLength) {
+		if len(word) >= minLen && len(word) <= maxLen && isPassword(word, entropyFunc, entropyset[len(word)].Avg) {
 			matches = append(matches, word)
 		}
 	}
@@ -103,7 +118,7 @@ func (app *App) ScanFileWithEntropy(file string) *ScanResults {
 	foundSecrets := map[int]Secret{}
 
 	for scanner.Scan() {
-		matches := app.scanWithEntropy(scanner.Text())
+		matches := app.scanWithEntropy(scanner.Text(), entropySetOne, calculateEntropy)
 		for _, match := range matches {
 			foundSecrets[line] = Secret{SecretType: "entropy", SecretValue: match, LineNumber: line}
 		}
