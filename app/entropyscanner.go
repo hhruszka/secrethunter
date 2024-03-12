@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strings"
 	"unicode"
 )
 
@@ -13,6 +14,38 @@ type Entropy struct {
 	Avg float64 `json:"Avg"`
 	Min float64 `json:"Min"`
 	Max float64 `json:"Max"`
+}
+
+// https://owasp.org/www-community/password-special-characters
+var Symbols = " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+
+type CharStats struct {
+	lowers  int
+	uppers  int
+	digits  int
+	symbols int
+}
+
+func charStats(word string) CharStats {
+	var stats CharStats
+	for _, char := range word {
+		switch {
+		case unicode.IsLower(char):
+			stats.lowers++
+		case unicode.IsUpper(char):
+			stats.uppers++
+		case unicode.IsDigit(char):
+			stats.digits++
+		case strings.ContainsRune(Symbols, char):
+			stats.symbols++
+		default:
+			continue
+		}
+	}
+
+	//stats.entropy = calculateEntropy(word)
+
+	return stats
 }
 
 func calculateEntropy(s string) float64 {
@@ -75,7 +108,7 @@ func isPassword(password string, entropyFunc func(string) float64, entropy float
 	return entropyFunc(password) > entropy
 }
 
-func (app *App) scanWithEntropy(text string, entropyset map[int]Entropy, entropyFunc func(string) float64) []string {
+func (app *App) scanWithEntropy(text string, entropyset map[V]Entropy, entropyFunc func(string) float64) []string {
 	var words []string = wordsRegex.Split(text, -1)
 	var matches []string
 
