@@ -2,6 +2,8 @@ package app
 
 import (
 	"bufio"
+	"embed"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -10,20 +12,23 @@ import (
 	"unicode"
 )
 
-type Entropy struct {
-	Avg float64 `json:"Avg"`
-	Min float64 `json:"Min"`
-	Max float64 `json:"Max"`
-}
-
 // https://owasp.org/www-community/password-special-characters
 var Symbols = " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+
+//go:embed data/entropy.txt
+var res embed.FS
 
 type CharStats struct {
 	lowers  int
 	uppers  int
 	digits  int
 	symbols int
+}
+
+type Entropy struct {
+	Avg float64 `json:"Avg"`
+	Min float64 `json:"Min"`
+	Max float64 `json:"Max"`
 }
 
 func charStats(word string) CharStats {
@@ -46,6 +51,14 @@ func charStats(word string) CharStats {
 	//stats.entropy = calculateEntropy(word)
 
 	return stats
+}
+
+func init() {
+	data := read(res, "data/entropy.txt")
+	for _, entry := range data {
+		entropy := uncompressEntropy(entry)
+		fmt.Printf("[+] Entropy set has %d entries\n", len(entropy))
+	}
 }
 
 func calculateEntropy(s string) float64 {
