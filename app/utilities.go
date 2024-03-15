@@ -126,6 +126,7 @@ func uncompressEntropy(data []byte) map[CharStats]Entropy {
 	var entropy map[CharStats]Entropy = make(map[CharStats]Entropy)
 	for _, entry := range jsonEntropy {
 		entropy[entry.Key] = entry.Val
+		//fmt.Printf("%+v:%+v\n", entry.Key, entry.Val)
 	}
 	return entropy
 }

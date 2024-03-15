@@ -3,7 +3,6 @@ package app
 import (
 	"bufio"
 	"embed"
-	"fmt"
 	"log"
 	"math"
 	"os"
@@ -19,14 +18,14 @@ var Symbols = " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
 var res embed.FS
 
 type CharStats struct {
-	lowers  int
-	uppers  int
-	digits  int
-	symbols int
+	Lowers  int `json:"Lowers"`
+	Uppers  int `json:"Uppers"`
+	Digits  int `json:"Digits"`
+	Symbols int `json:"Symbols"`
 }
 
 func (s CharStats) len() int {
-	return s.digits + s.uppers + s.lowers + s.symbols
+	return s.Digits + s.Uppers + s.Lowers + s.Symbols
 }
 
 type Entropy struct {
@@ -35,34 +34,36 @@ type Entropy struct {
 	Max float64 `json:"Max"`
 }
 
+func init() {
+	data := read(res, "data/entropy.txt")
+
+	entropySetWords = uncompressEntropy(data[0])
+	entropySetBreaches = uncompressEntropy(data[1])
+	entropySetGen = uncompressEntropy(data[2])
+
+	//fmt.Printf("[+] entropySetWords set has %d entries\n", len(entropySetWords))
+	//fmt.Printf("[+] entropySetBreaches set has %d entries\n", len(entropySetBreaches))
+	//fmt.Printf("[+] entropySetGen set has %d entries\n", len(entropySetGen))
+}
+
 func charStats(word string) CharStats {
 	var stats CharStats
 	for _, char := range word {
 		switch {
 		case unicode.IsLower(char):
-			stats.lowers++
+			stats.Lowers++
 		case unicode.IsUpper(char):
-			stats.uppers++
+			stats.Uppers++
 		case unicode.IsDigit(char):
-			stats.digits++
+			stats.Digits++
 		case strings.ContainsRune(Symbols, char):
-			stats.symbols++
+			stats.Symbols++
 		default:
 			continue
 		}
 	}
 
-	//stats.entropy = calculateEntropy(word)
-
 	return stats
-}
-
-func init() {
-	data := read(res, "data/entropy.txt")
-	for _, entry := range data {
-		entropy := uncompressEntropy(entry)
-		fmt.Printf("[+] Entropy set has %d entries\n", len(entropy))
-	}
 }
 
 func calculateEntropyOne(s string) float64 {
@@ -261,5 +262,5 @@ func (app *App) ScanFileWithEntropyTwo(file string, entropySet map[CharStats]Ent
 
 func (app *App) ScanFileWithEntropy(file string) *ScanResults {
 	//return app.ScanFileWithEntropyOne(file, entropySetOne, calculateEntropyOne)
-	return app.ScanFileWithEntropyTwo(file, entropySetFour, calculateEntropyOne)
+	return app.ScanFileWithEntropyTwo(file, entropySetWords, calculateEntropyOne)
 }
