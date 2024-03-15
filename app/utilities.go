@@ -59,11 +59,11 @@ func sizeof(tbl []string) int {
 	return size / 1024 / 1024
 }
 
-func CompressEntropy(entropy map[CharStats]Entropy) []byte {
+func CompressEntropy(entropy map[CharStats]EntropyStats) []byte {
 	// Serialize the slice
 	type entropy2json struct {
 		Key CharStats
-		Val Entropy
+		Val EntropyStats
 	}
 
 	var jsonEntropy = make([]entropy2json, len(entropy))
@@ -89,14 +89,14 @@ func CompressEntropy(entropy map[CharStats]Entropy) []byte {
 	return compressedData.Bytes()
 }
 
-func uncompressEntropy(data []byte) map[CharStats]Entropy {
+func uncompressEntropy(data []byte) map[CharStats]EntropyStats {
 	// Serialize the slice
 	type entropy2json struct {
 		Key CharStats
-		Val Entropy
+		Val EntropyStats
 	}
 
-	fmt.Printf("[+] Got %d bytes to decompres\n", len(data))
+	//fmt.Printf("[+] Got %d bytes to decompres\n", len(data))
 	var uncompressedData bytes.Buffer
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
@@ -104,11 +104,11 @@ func uncompressEntropy(data []byte) map[CharStats]Entropy {
 		os.Exit(1)
 	}
 
-	if n, err := io.Copy(&uncompressedData, gz); err != nil {
+	if _, err := io.Copy(&uncompressedData, gz); err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	} else {
-		fmt.Printf("[+] Uncompressed to %d bytes of data\n", n)
+		//fmt.Printf("[+] Uncompressed to %d bytes of data\n", n)
 	}
 	if err := gz.Close(); err != nil {
 		fmt.Println(err.Error())
@@ -123,7 +123,7 @@ func uncompressEntropy(data []byte) map[CharStats]Entropy {
 		os.Exit(1)
 	}
 
-	var entropy map[CharStats]Entropy = make(map[CharStats]Entropy)
+	var entropy map[CharStats]EntropyStats = make(map[CharStats]EntropyStats)
 	for _, entry := range jsonEntropy {
 		entropy[entry.Key] = entry.Val
 		//fmt.Printf("%+v:%+v\n", entry.Key, entry.Val)
@@ -169,8 +169,8 @@ func read(res fs.FS, fileName string) [][]byte {
 		}
 
 		data = append(data, make([]byte, length))
-		if n, err := io.ReadFull(reader, data[lines]); err == nil {
-			fmt.Printf("[+] Read %d bytes\n", n)
+		if _, err := io.ReadFull(reader, data[lines]); err == nil {
+			//fmt.Printf("[+] Read %d bytes\n", n)
 		}
 		lines += 1
 

@@ -8,16 +8,25 @@ var base64Regex = regexp.MustCompile(`^([A-Za-z0-9+\/]{4})+([A-Za-z0-9+\/]{2}==|
 
 // var wordsRegex = regexp.MustCompile(`\W+`)
 var wordsRegex = regexp.MustCompile(`[,:;. '"]+`)
-
+var timeRegexes = []*regexp.Regexp{
+	regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`),                           // ISO 8601 / RFC 3339, UTC
+	regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[\+\-]\d{2}:\d{2}$`),           // ISO 8601 / RFC 3339, with offset
+	regexp.MustCompile(`^\d{2}:\d{2}$`),                                                    // 24-Hour Time, HH:MM
+	regexp.MustCompile(`^\d{2}:\d{2}:\d{2}$`),                                              // 24-Hour Time, HH:MM:SS
+	regexp.MustCompile(`^(1[0-2]|0?[1-9]):[0-5]\d (AM|PM)$`),                               // 12-Hour Time, HH:MM AM/PM
+	regexp.MustCompile(`^(1[0-2]|0?[1-9]):[0-5]\d:[0-5]\d (AM|PM)$`),                       // 12-Hour Time, HH:MM:SS AM/PM
+	regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`),                                              // Complete Date, YYYY-MM-DD
+	regexp.MustCompile(`^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{2}, \d{4}$`), // Month Day, Year, MMM DD, YYYY
+}
 var defaultExcludePatterns = []string{
 	`.*\/(man|docs?|examples?|python[23]\..+|perl5)(\/|$).*`,
-	`^\/home(\/|$)`,
+	//`^\/home(\/|$)`,
 	`^\/proc(\/|$)`,
 	`^\/sys(\/|$)`,
 	`^\/run(\/|$)`,
 	`^\/usr(\/|$)`,
 	`^\/boot(\/|$)`,
-	`^\/etc(\/|$)`,
+	//`^\/etc(\/|$)`,
 	//`^\/usr\/share(\/|$)`,
 	//`^\/usr\/lib(\/|$)`,
 	`^\/.+(\.pem|\.crt)$`,
@@ -95,7 +104,11 @@ var defaultPatterns = `
 `
 
 var (
-	entropySetWords    map[CharStats]Entropy
-	entropySetBreaches map[CharStats]Entropy
-	entropySetGen      map[CharStats]Entropy
+	entropySetWords    *EntropySet
+	entropySetBreaches *EntropySet
+	entropySetGen      *EntropySet
+)
+
+var (
+	dictionary map[string]int = make(map[string]int)
 )
