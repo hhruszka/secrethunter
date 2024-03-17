@@ -43,7 +43,7 @@ func (app *App) ScanFileWithRegex(file string) *ScanResults {
 
 		for _, found := range foundMatches {
 			for _, match := range found.matches {
-				foundSecrets[line] = Secret{SecretType: found.pattern.Name, SecretValue: match, LineNumber: line}
+				foundSecrets[line] = Secret{SecretType: found.pattern.Name, SecretValue: match, Likelihood: VeryLikely, LineNumber: line}
 			}
 		}
 		line++

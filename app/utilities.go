@@ -149,11 +149,38 @@ func Save(filename string, data []byte) {
 	}
 }
 
-func read(res fs.FS, fileName string) [][]byte {
+func ReadAll(fileName string) ([]string, error) {
+	var lines []string
+	file, err := res.Open(fileName)
+	if err != nil {
+		//fmt.Println(err.Error())
+		return nil, err
+	}
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		//fmt.Println(err.Error())
+		return nil, err
+	}
+	defer func() { _ = gz.Close() }()
+
+	var line string
+	scanner := bufio.NewScanner(gz)
+	for scanner.Scan() {
+		line = scanner.Text()
+		lines = append(lines, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+		//log.Fatalf("Failed to read: %v", err)
+	}
+	return lines, nil
+}
+
+func ReadBinaryFile(res fs.FS, fileName string) ([][]byte, error) {
 	resFile, err := res.Open(fileName)
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		//fmt.Println(err.Error())
+		return nil, err
 	}
 	defer func() { _ = resFile.Close() }()
 
@@ -175,5 +202,5 @@ func read(res fs.FS, fileName string) [][]byte {
 		lines += 1
 
 	}
-	return data
+	return data, nil
 }

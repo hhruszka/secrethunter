@@ -61,9 +61,20 @@ type Options struct {
 	MinWordLength    int
 }
 
+type Probability int
+
+const (
+	VeryUnlikely Probability = iota
+	Unlikely
+	Possible
+	Likely
+	VeryLikely
+)
+
 type Secret struct {
 	SecretType  string
 	SecretValue string
+	Likelihood  Probability
 	LineNumber  int
 }
 

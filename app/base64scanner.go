@@ -84,15 +84,15 @@ func isBase64DecodedString(s string) (string, error) {
 	return "", errors.New("Decoded base64 string consists of non-printable characters")
 }
 
-func (app *App) scanWithBase64(text string) []string {
+func (app *App) scanWithBase64(text string) []Match {
 	var words []string = wordsRegex.Split(text, -1)
-	var matches []string
+	var matches []Match
 
 	for _, word := range words {
 		if len(word) >= app.minWordLength && base64Regex.MatchString(word) {
 			decoded, err := isBase64DecodedString(word)
 			if err == nil {
-				matches = append(matches, fmt.Sprintf("%s => %s", word, decoded))
+				matches = append(matches, Match{word: fmt.Sprintf("%s => %s", word, decoded), probability: VeryLikely})
 			}
 		}
 	}
@@ -117,7 +117,7 @@ func (app *App) ScanFileWithBase64(file string) *ScanResults {
 	for scanner.Scan() {
 		matches := app.scanWithBase64(scanner.Text())
 		for _, match := range matches {
-			foundSecrets[line] = Secret{SecretType: "base64", SecretValue: match, LineNumber: line}
+			foundSecrets[line] = Secret{SecretType: "base64", SecretValue: match.word, Likelihood: match.probability, LineNumber: line}
 		}
 
 		line++

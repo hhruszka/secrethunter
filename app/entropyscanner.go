@@ -2,7 +2,6 @@ package app
 
 import (
 	"bufio"
-	"compress/gzip"
 	"embed"
 	"fmt"
 	"log"
@@ -12,12 +11,6 @@ import (
 	"strings"
 	"unicode"
 )
-
-// https://owasp.org/www-community/password-special-characters
-var Symbols = " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-
-//go:embed data/*
-var res embed.FS
 
 type CharStats struct {
 	Lowers  int `json:"Lowers"`
@@ -72,42 +65,80 @@ func NewEntropySet(dataSet map[CharStats]EntropyStats) *EntropySet {
 	return &es
 }
 
+// https://owasp.org/www-community/password-special-characters
+var Symbols = " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+
+//go:embed data/*
+var res embed.FS
+
+var (
+	entropySetWords    *EntropySet
+	entropySetBreaches *EntropySet
+	entropySetGen      *EntropySet
+)
+
+var (
+	EnglishDictionary map[string]int = make(map[string]int)
+	BreachedPasswords map[string]int = make(map[string]int)
+	LinuxWords        map[string]int = make(map[string]int)
+)
+
 func init() {
-	data := read(res, "data/entropy.txt")
+	var (
+		data  [][]byte
+		lines []string
+		err   error
+	)
+
+	data, err = ReadBinaryFile(res, "data/entropy.txt")
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 
 	entropySetWords = NewEntropySet(uncompressEntropy(data[0]))
 	entropySetBreaches = NewEntropySet(uncompressEntropy(data[1]))
 	entropySetGen = NewEntropySet(uncompressEntropy(data[2]))
 
-	file, err := res.Open("data/words.txt.gz")
+	lines, err = ReadAll("data/words.txt.gz")
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	gz, err := gzip.NewReader(file)
+
+	for _, line := range lines {
+		EnglishDictionary[line] = 0
+	}
+
+	lines, err = ReadAll("data/passwords.txt.gz")
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
 	}
-	defer func() { _ = gz.Close() }()
 
-	var word string
-	scanner := bufio.NewScanner(gz)
-	for scanner.Scan() {
-		word = scanner.Text()
+	for _, line := range lines {
+		BreachedPasswords[line] = 0
+	}
 
-		//dictionary = append(dictionary, line)
-		dictionary[word] = 0
+	lines, err = ReadAll("data/linuxwords.txt.gz")
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
 	}
-	if err := scanner.Err(); err != nil {
-		log.Fatalf("Failed to read: %v", err)
+
+	for _, line := range lines {
+		LinuxWords[line] = 0
 	}
-	fmt.Printf("[+] Loaded %d words of English dictionary\n", len(dictionary))
+
+	fmt.Printf("[+] Loaded %d words of English dictionary\n", len(EnglishDictionary))
+	fmt.Printf("[+] Loaded %d words of breached passwords\n", len(BreachedPasswords))
+	fmt.Printf("[+] Loaded %d words of linux words\n", len(LinuxWords))
 	fmt.Printf("[+] entropySetWords set has %d entries\n", len(entropySetWords.Set))
 	fmt.Printf("[+] entropySetBreaches set has %d entries\n", len(entropySetBreaches.Set))
 	fmt.Printf("[+] entropySetGen set has %d entries\n", len(entropySetGen.Set))
 }
 
+// charStats
 func charStats(word string) CharStats {
 	var stats CharStats
 	for _, char := range word {
@@ -128,6 +159,7 @@ func charStats(word string) CharStats {
 	return stats
 }
 
+// calculateEntropyOne calculates entropy of a word
 func calculateEntropyOne(s string) float64 {
 	charCount := make(map[rune]float64)
 
@@ -146,6 +178,7 @@ func calculateEntropyOne(s string) float64 {
 	return entropy
 }
 
+// calculateEntropyTwo calculates entropy of a word
 func calculateEntropyTwo(word string) float64 {
 	charCount := make(map[rune]float64)
 	var entropy float64
@@ -184,27 +217,31 @@ func calculateEntropyTwo(word string) float64 {
 	return entropy
 }
 
+// PasswordCheckerZero checks if a word is just a bunch of lowercase letters and thus unlikely to be a password
 func PasswordCheckerZero(word string) bool {
-	if stats := charStats(word); stats.Digits == 0 && stats.Symbols == 0 {
-		return false
-	}
-	return true
-}
-
-func PasswordCheckerOne(word string) bool {
 	if stats := charStats(word); stats.Uppers == 0 && stats.Digits == 0 && stats.Symbols == 0 {
-		return false
+		return true
 	}
-	return true
+	return false
 }
 
+// PasswordCheckerOne checks if a word is a bunch of letters and thus unlikely to be a password
+func PasswordCheckerOne(word string) bool {
+	if stats := charStats(word); stats.Digits == 0 && stats.Symbols == 0 {
+		return true
+	}
+	return false
+}
+
+// PasswordCheckerTwo checks if a word could be a file path
 func PasswordCheckerTwo(word string) bool {
 	if filepath.IsAbs(word) {
-		return false
+		return true
 	}
-	return true
+	return false
 }
 
+// PasswordCheckerThree checks if a word is an existing directory or a file
 func PasswordCheckerThree(word string) bool {
 	if filepath.IsAbs(word) {
 		if _, err := os.Stat(word); err == nil {
@@ -214,43 +251,109 @@ func PasswordCheckerThree(word string) bool {
 	return false
 }
 
+// PasswordCheckFour checks if a word is a time or a date typical for Linux (ML candidate)
 func PasswordCheckFour(word string) bool {
 	for _, reg := range timeRegexes {
 		if reg.MatchString(word) {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
+// PasswordCheckerFive checks if a word is an english word
 func PasswordCheckerFive(word string) bool {
-	if _, found := dictionary[word]; found {
-		dictionary[word] += 1
-		return false
+	//var found bool
+	if _, found := EnglishDictionary[word]; found {
+		return true
+	} else if _, found = EnglishDictionary[strings.ToLower(word)]; found {
+		return true
 	}
-	return true
+	return false
 }
 
+// PasswordCheckerSix checks if a word is an english word
 func PasswordCheckerSix(word string) bool {
-	if _, found := dictionary[strings.ToTitle(word)]; found {
-		dictionary[word] += 1
-		return false
+	if _, found := EnglishDictionary[strings.ToTitle(word)]; found {
+		//dictionary[word] += 1
+		return true
 	}
-	return true
+	return false
 }
 
-func PasswordEntropyChecker(word string, entropySet *EntropySet, entropyFunc func(string) float64) bool {
+// PasswordCheckSeven checks if a word could be an English word since its entropy is within an entropy range of
+// the set of English words of a given length and characteristics
+func PasswordCheckSeven(word string) bool {
 	var entropy EntropyStats
 	var found bool
 
-	if entropy, found = entropySet.Set[charStats(word)]; !found {
+	if len(word) < entropySetWords.Min && len(word) > entropySetWords.Max {
+		return false
+	}
+	if entropy, found = entropySetWords.Set[charStats(word)]; !found {
 		return false
 	}
 
-	return (entropyFunc(word) - entropy.Avg) > entropy.Dev
+	return math.Abs(calculateEntropyTwo(word)-entropy.Avg) > entropy.Dev
 }
 
-func isPassword(word string, entropyFunc func(string) float64) bool {
+// PasswordCheckEight checks if a word could be a password since its entropy is within an entropy range of
+// the breached passwords with a given length and characteristics
+func PasswordCheckEight(word string) bool {
+	var entropy EntropyStats
+	var found bool
+
+	if len(word) < entropySetBreaches.Min && len(word) > entropySetBreaches.Max {
+		return false
+	}
+	if entropy, found = entropySetBreaches.Set[charStats(word)]; !found {
+		return false
+	}
+
+	return math.Abs(calculateEntropyTwo(word)-entropy.Avg) < entropy.Dev
+}
+
+// PasswordCheckNine checks if a word could be a password since its entropy is within an entropy range of
+// the set of generated passwords of a given length
+func PasswordCheckNine(word string) bool {
+	var entropy EntropyStats
+	var found bool
+
+	if len(word) < entropySetGen.Min && len(word) > entropySetGen.Max {
+		return false
+	}
+	if entropy, found = entropySetGen.Set[charStats(word)]; !found {
+		return false
+	}
+
+	return math.Abs(calculateEntropyTwo(word)-entropy.Avg) < entropy.Dev
+}
+
+// PasswordCheckerTen checks if a word is an breached password
+func PasswordCheckerTen(word string) bool {
+	if _, found := BreachedPasswords[word]; found {
+		return true
+	}
+	return false
+}
+
+// PasswordCheckerTen checks if a word is an breached password
+func PasswordCheckerEleven(word string) bool {
+	if stats := charStats(word); stats.Digits > 0 && stats.Symbols >= 0 && stats.Lowers == 0 && stats.Uppers == 0 {
+		return true
+	}
+	return false
+}
+
+// PasswordCheckerTwelve checks if a word is one of the linux words
+func PasswordCheckerTwelve(word string) bool {
+	if _, found := LinuxWords[word]; found {
+		return true
+	}
+	return false
+}
+
+func isPassword(word string) Probability {
 	// TODO:
 	// - replace it with a set of checkers
 	// - checkers should verify the semantics of a word:
@@ -260,26 +363,90 @@ func isPassword(word string, entropyFunc func(string) float64) bool {
 	//   - it does not contain symbols and special characters
 	//   - entropy is within a range - how to compare entropy of a word and a password?
 	//   - categorization could be done by ML
-	return false
+
+	switch {
+	case PasswordCheckerEleven(word):
+		// is a bunch of digits and symbols
+		return Unlikely
+	case PasswordCheckerThree(word):
+		// is an existing file or directory
+		//fmt.Println("is an existing file or directory")
+		return VeryUnlikely
+	case PasswordCheckerTwo(word):
+		// is likely a file path
+		//fmt.Println("is likely a file path")
+		return Unlikely
+	case PasswordCheckFour(word):
+		// is likely to be a date or time
+		//fmt.Println("is likely to be a date or time")
+		return VeryUnlikely
+	case PasswordCheckerTwelve(word):
+		// is a linux word
+		return Unlikely
+	case PasswordCheckerFive(word) || PasswordCheckerSix(word):
+		// is an English word
+		//fmt.Printf("case 1 - %s is an English word\n", word)
+		return VeryUnlikely
+	//case PasswordCheckerTen(word):
+	//	// is a breached password
+	//	//fmt.Fprintf(os.Stderr, "%s\n", word)
+	//	return VeryLikely
+	case PasswordCheckerZero(word):
+		// is a bunch of lower case letters and is unlikely to be a password
+		//fmt.Println("is a bunch of lower case letters and could be a low complexity password")
+		return Unlikely
+	case PasswordCheckerOne(word):
+		// is a bunch of lower and upper case letters and could be a low complexity password
+		//fmt.Println("is a bunch of lower and upper case letters and could be a medium complexity password")
+		return Possible
+	case PasswordCheckSeven(word):
+		// is likely to be an English word
+		//fmt.Println("is likely to be an English word")
+		return Unlikely
+	//case PasswordCheckEight(word):
+	//	// is likely a breached password
+	//	//_, _ = fmt.Fprintf(os.Stderr, "%s is likely a breached password\n", word)
+	//	return Likely
+	case PasswordCheckNine(word):
+		// is very likely a high complexity password
+		//_, _ = fmt.Fprintf(os.Stderr, "%s is very likely a high complexity password\n", word)
+		return VeryLikely
+	}
+	return VeryUnlikely
 }
 
-func (app *App) scanWithEntropyTwo(text string, entropyFunc func(string) float64) []string {
+type Match struct {
+	word        string
+	probability Probability
+}
+
+// scanWithEntropyTwo breaks a text line into words based of a regular expression
+// and checks whether any of the derived words could be a password.
+func (app *App) scanWithEntropyTwo(text string) []Match {
 	var words []string = wordsRegex.Split(text, -1)
-	var matches []string
+	var matches []Match
 
 	for _, word := range words {
-		if _, found := entropySetBreaches.Set[charStats(word)]; !found {
-			continue
-		}
-
-		if isPassword(word, entropyFunc) {
-			matches = append(matches, word)
+		//fmt.Fprintf(os.Stderr, "%s\n", word)
+		if len(word) >= 5 && len(word) <= 32 {
+			switch probability := isPassword(word); probability {
+			case VeryUnlikely:
+				continue
+			case Unlikely:
+				continue
+			case Possible:
+				continue
+			case Likely:
+				continue
+			case VeryLikely:
+				matches = append(matches, Match{word: word, probability: probability})
+			}
 		}
 	}
 	return matches
 }
 
-func (app *App) ScanFileWithEntropyTwo(file string, entropyFunc func(string) float64) *ScanResults {
+func (app *App) ScanFileWithEntropyTwo(file string) *ScanResults {
 	f, err := os.Open(file)
 
 	if err != nil && !os.IsNotExist(err) {
@@ -295,9 +462,9 @@ func (app *App) ScanFileWithEntropyTwo(file string, entropyFunc func(string) flo
 	foundSecrets := map[int]Secret{}
 
 	for scanner.Scan() {
-		matches := app.scanWithEntropyTwo(scanner.Text(), entropyFunc)
+		matches := app.scanWithEntropyTwo(scanner.Text())
 		for _, match := range matches {
-			foundSecrets[line] = Secret{SecretType: "entropy", SecretValue: match, LineNumber: line}
+			foundSecrets[line] = Secret{SecretType: "entropy", SecretValue: match.word, Likelihood: match.probability, LineNumber: line}
 		}
 
 		line++
@@ -312,8 +479,8 @@ func (app *App) ScanFileWithEntropyTwo(file string, entropyFunc func(string) flo
 
 func (app *App) ScanFileWithEntropy(file string) *ScanResults {
 	//return app.ScanFileWithEntropyOne(file, entropySetOne, calculateEntropyOne)
-	//return app.ScanFileWithEntropyTwo(file, calculateEntropyOne)
-	return nil
+	return app.ScanFileWithEntropyTwo(file)
+	//return nil
 }
 
 //func (app *App) scanWithEntropyOne(text string, minLen int, maxLen int, entropyset map[int]EntropyStats, entropyFunc func(string) float64) []string {

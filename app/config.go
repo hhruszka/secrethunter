@@ -17,6 +17,7 @@ var timeRegexes = []*regexp.Regexp{
 	regexp.MustCompile(`^(1[0-2]|0?[1-9]):[0-5]\d:[0-5]\d (AM|PM)$`),                       // 12-Hour Time, HH:MM:SS AM/PM
 	regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`),                                              // Complete Date, YYYY-MM-DD
 	regexp.MustCompile(`^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{2}, \d{4}$`), // Month Day, Year, MMM DD, YYYY
+	regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}$`),                                        // 2024-02-14T12
 }
 var defaultExcludePatterns = []string{
 	`.*\/(man|docs?|examples?|python[23]\..+|perl5)(\/|$).*`,
@@ -26,7 +27,11 @@ var defaultExcludePatterns = []string{
 	`^\/run(\/|$)`,
 	`^\/usr(\/|$)`,
 	`^\/boot(\/|$)`,
-	//`^\/etc(\/|$)`,
+	`^\/var\/cache(\/|$)`,
+	`^\/var\/log\/dnf.+$`,
+	//`^\/etc\/selinux(\/|$)`,
+	//`^\/etc\/services$`,
+	`^\/etc(\/|$)`,
 	//`^\/usr\/share(\/|$)`,
 	//`^\/usr\/lib(\/|$)`,
 	`^\/.+(\.pem|\.crt)$`,
@@ -102,13 +107,3 @@ var defaultPatterns = `
   regex: "[a-zA-Z]{3,10}://[^/\\s:@]{3,20}:[^/\\s:@]{3,20}@.{1,100}[\"'\\s]"
   confidence: high
 `
-
-var (
-	entropySetWords    *EntropySet
-	entropySetBreaches *EntropySet
-	entropySetGen      *EntropySet
-)
-
-var (
-	dictionary map[string]int = make(map[string]int)
-)
