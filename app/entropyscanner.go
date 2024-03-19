@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"embed"
 	"fmt"
+	"golang.org/x/exp/utf8string"
 	"log"
 	"math"
 	"os"
@@ -353,6 +354,11 @@ func PasswordCheckerTwelve(word string) bool {
 	return false
 }
 
+// PasswordCheckerThirteen checks if a word consists only of ASCII characters
+func PasswordCheckerThirteen(word string) bool {
+	return utf8string.NewString(word).IsASCII()
+}
+
 func isPassword(word string) Probability {
 	// TODO:
 	// - replace it with a set of checkers
@@ -365,6 +371,9 @@ func isPassword(word string) Probability {
 	//   - categorization could be done by ML
 
 	switch {
+	case !PasswordCheckerThirteen(word):
+		// word contains non-ascii characters therefore is unlikely to be a password
+		return Unlikely
 	case PasswordCheckerEleven(word):
 		// is a bunch of digits and symbols
 		return Unlikely
@@ -403,10 +412,10 @@ func isPassword(word string) Probability {
 		// is likely to be an English word
 		//fmt.Println("is likely to be an English word")
 		return Unlikely
-	//case PasswordCheckEight(word):
-	//	// is likely a breached password
-	//	//_, _ = fmt.Fprintf(os.Stderr, "%s is likely a breached password\n", word)
-	//	return Likely
+	case PasswordCheckEight(word):
+		// is likely a breached password
+		//_, _ = fmt.Fprintf(os.Stderr, "%s is likely a breached password\n", word)
+		return Likely
 	case PasswordCheckNine(word):
 		// is very likely a high complexity password
 		//_, _ = fmt.Fprintf(os.Stderr, "%s is very likely a high complexity password\n", word)
